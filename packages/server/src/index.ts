@@ -1,12 +1,15 @@
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 // pnpm runs from packages/server/, so .env is two levels up at repo root
 dotenv.config({ path: "../../.env" });
 
 import express from "express";
 import { GameGenerator, SpecRefiner } from "@otherside/ai";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = 3001;
+const PORT = parseInt(process.env.PORT || "3001", 10);
 
 app.use(express.json({ limit: "1mb" }));
 
@@ -60,6 +63,13 @@ app.post("/api/refine", async (req, res) => {
     console.error("[refine] Error:", message);
     res.status(500).json({ error: message });
   }
+});
+
+// In production, serve the Vite-built frontend
+const engineDist = path.resolve(__dirname, "../../engine/dist");
+app.use(express.static(engineDist));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(engineDist, "index.html"));
 });
 
 const server = app.listen(PORT, () => {

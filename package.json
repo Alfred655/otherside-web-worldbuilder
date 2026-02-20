@@ -9,6 +9,7 @@
     "dev:engine": "pnpm --filter @otherside/engine dev",
     "dev:server": "pnpm --filter @otherside/server dev",
     "build": "pnpm -r build",
+    "start": "node packages/server/dist/index.js",
     "typecheck": "pnpm -r typecheck"
   }
 }
