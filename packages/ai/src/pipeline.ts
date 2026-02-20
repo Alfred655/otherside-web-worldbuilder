@@ -113,7 +113,7 @@ export class GenerationPipeline {
         userContent += `\n\nGuidance: Reduce entity count if needed. Use primitive meshes for collectibles and props. Ensure all JSON is valid.`;
       }
 
-      const response = await this.client.messages.create({
+      const response = await this.client.messages.stream({
         model: this.model,
         max_tokens: 32768,
         system: BUILDER_SYSTEM_PROMPT,
@@ -121,7 +121,7 @@ export class GenerationPipeline {
           { role: "user", content: userContent },
           { role: "assistant", content: "{" },
         ],
-      });
+      }).finalMessage();
 
       // Check for truncation
       if (response.stop_reason === "max_tokens") {
@@ -202,7 +202,7 @@ export class GenerationPipeline {
     );
 
     try {
-      const response = await this.client.messages.create({
+      const response = await this.client.messages.stream({
         model: this.model,
         max_tokens: 32768,
         system: VALIDATOR_SYSTEM_PROMPT,
@@ -213,7 +213,7 @@ export class GenerationPipeline {
           },
           { role: "assistant", content: "{" },
         ],
-      });
+      }).finalMessage();
 
       if (response.stop_reason === "max_tokens") {
         console.warn("[Pipeline:Validator] LLM fix truncated, using programmatic fix");
