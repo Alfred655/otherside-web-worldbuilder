@@ -28,7 +28,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/generate", async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, template } = req.body;
   if (!prompt || typeof prompt !== "string") {
     res.status(400).json({ error: "Missing 'prompt' string in request body" });
     return;
@@ -47,9 +47,9 @@ app.post("/api/generate", async (req, res) => {
   try {
     const { spec } = await generator.generate(prompt, (status) => {
       sendEvent("status", { message: status });
-    });
+    }, template);
     console.log(
-      `[generate] Done: "${spec.name}" (${spec.entities.length} entities)`,
+      `[generate] Done: "${spec.name}" (template: ${template ?? "classic"})`,
     );
     sendEvent("complete", { spec });
   } catch (err) {
@@ -62,7 +62,7 @@ app.post("/api/generate", async (req, res) => {
 });
 
 app.post("/api/refine", async (req, res) => {
-  const { spec, instruction } = req.body;
+  const { spec, instruction, template } = req.body;
   if (!spec || !instruction || typeof instruction !== "string") {
     res
       .status(400)
@@ -71,8 +71,14 @@ app.post("/api/refine", async (req, res) => {
   }
 
   try {
-    const refined = await refiner.refine(spec, instruction);
-    console.log(`[refine] Done: "${refined.name}" (${refined.entities.length} entities)`);
+    let refined;
+    if (template === "shooter" || spec.template === "shooter") {
+      refined = await refiner.refineShooter(spec, instruction);
+      console.log(`[refine] Done: "${refined.name}" (${refined.enemies.length} enemies)`);
+    } else {
+      refined = await refiner.refine(spec, instruction);
+      console.log(`[refine] Done: "${refined.name}" (${refined.entities.length} entities)`);
+    }
     res.json({ spec: refined });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Refinement failed";

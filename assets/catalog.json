@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "version": "1.0",
+    "description": "Asset catalog for Otherside Web Worldbuilder. The AI reads this to know which 3D models are available when generating game specs."
+  },
+  "assets": {
+    "enemies": {},
+    "weapons": {},
+    "cover": {},
+    "pickups": {},
+    "environment": {},
+    "props": {}
+  }
+}

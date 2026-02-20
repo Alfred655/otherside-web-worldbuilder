@@ -1,29 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { GameSpecSchema, type GameSpec } from "@otherside/shared";
+import { GameSpecSchema, ShooterSpecSchema, type GameSpec, type ShooterSpec } from "@otherside/shared";
 import { REFINE_SYSTEM_PROMPT } from "./system-prompt.js";
+import { SHOOTER_REFINE_PROMPT } from "./prompts/shooter-prompt.js";
 import { validateSpec, autoFixSpec } from "./validator.js";
-
-function extractJSON(text: string): string {
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  let json = "";
-  if (fenceMatch) {
-    json = fenceMatch[1].trim();
-  } else {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start !== -1 && end !== -1) json = text.slice(start, end + 1);
-    else json = text.trim();
-  }
-  // Safe trailing comma repair only
-  json = json.replace(/,\s*]/g, "]").replace(/,\s*}/g, "}");
-  return json;
-}
+import { validateShooterSpec, autoFixShooterSpec } from "./shooter-validator.js";
+import { extractJSON } from "./llm-runner.js";
 
 export interface RefineOptions {
   model?: string;
 }
 
 const MAX_RETRIES = 3;
+
+interface GenericIssue {
+  description: string;
+}
 
 export class SpecRefiner {
   private client: Anthropic;
@@ -35,6 +26,35 @@ export class SpecRefiner {
   }
 
   async refine(spec: GameSpec, instruction: string): Promise<GameSpec> {
+    return this.refineGeneric(
+      spec,
+      instruction,
+      REFINE_SYSTEM_PROMPT,
+      GameSpecSchema,
+      (s) => validateSpec(s as GameSpec) as GenericIssue[],
+      (s, issues) => autoFixSpec(s as GameSpec, issues as any) as unknown as GameSpec,
+    ) as Promise<GameSpec>;
+  }
+
+  async refineShooter(spec: ShooterSpec, instruction: string): Promise<ShooterSpec> {
+    return this.refineGeneric(
+      spec,
+      instruction,
+      SHOOTER_REFINE_PROMPT,
+      ShooterSpecSchema,
+      (s) => validateShooterSpec(s as ShooterSpec) as GenericIssue[],
+      (s, issues) => autoFixShooterSpec(s as ShooterSpec, issues as any) as unknown as ShooterSpec,
+    ) as Promise<ShooterSpec>;
+  }
+
+  private async refineGeneric<T>(
+    spec: T,
+    instruction: string,
+    systemPrompt: string,
+    schema: { safeParse: (data: unknown) => any },
+    validate: (spec: T) => GenericIssue[],
+    autoFix: (spec: T, issues: GenericIssue[]) => T,
+  ): Promise<T> {
     let lastError: string | null = null;
     let lastFailedJSON: string | null = null;
 
@@ -45,21 +65,20 @@ export class SpecRefiner {
         if (lastFailedJSON) {
           userContent += `\n\nFirst 2000 chars of failed output:\n${lastFailedJSON.slice(0, 2000)}`;
         }
-        userContent += `\n\nGuidance: Ensure all JSON is valid. Use primitive meshes for collectibles and props.`;
+        userContent += `\n\nGuidance: Ensure all JSON is valid. Use primitive meshes.`;
       }
 
       const response = await this.client.messages.stream({
         model: this.model,
         max_tokens: 32768,
-        system: REFINE_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [
           { role: "user", content: userContent },
         ],
       }).finalMessage();
 
-      // Check for truncation
       if (response.stop_reason === "max_tokens") {
-        lastError = "Output was truncated (exceeded max_tokens). Reduce entity count. Use primitive meshes instead of compound for collectibles and props.";
+        lastError = "Output was truncated (exceeded max_tokens). Reduce entity count.";
         lastFailedJSON = null;
         console.warn(
           `[Refiner] Attempt ${attempt + 1}/${MAX_RETRIES} truncated (stop_reason=max_tokens)`,
@@ -73,11 +92,11 @@ export class SpecRefiner {
 
       try {
         const parsed = JSON.parse(json);
-        const result = GameSpecSchema.safeParse(parsed);
+        const result = schema.safeParse(parsed);
         if (!result.success) {
           const issueMessages = result.error.issues
             .slice(0, 10)
-            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+            .map((issue: any) => `${issue.path.join(".")}: ${issue.message}`)
             .join("\n");
           lastError = issueMessages;
           lastFailedJSON = json;
@@ -88,16 +107,16 @@ export class SpecRefiner {
           continue;
         }
 
-        let refined = result.data;
+        let refined = result.data as T;
 
         // Run validation on the refined spec
-        const issues = validateSpec(refined);
+        const issues = validate(refined);
         if (issues.length > 0) {
           console.log(
             "[Refiner] Auto-fixing issues:",
-            issues.map((i) => i.description),
+            issues.map(i => i.description),
           );
-          refined = autoFixSpec(refined, issues);
+          refined = autoFix(refined, issues);
         }
 
         return refined;
@@ -113,7 +132,7 @@ export class SpecRefiner {
     }
 
     throw new Error(
-      `Failed to refine GameSpec after ${MAX_RETRIES} attempts: ${lastError}`,
+      `Failed to refine spec after ${MAX_RETRIES} attempts: ${lastError}`,
     );
   }
 }

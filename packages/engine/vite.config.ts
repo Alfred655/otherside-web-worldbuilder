@@ -1,8 +1,13 @@
 import { defineConfig } from "vite";
+import path from "path";
 
 export default defineConfig({
   server: {
     port: 3000,
+    fs: {
+      // Allow serving files from the project root (for assets/ directory)
+      allow: [path.resolve(__dirname, "../..")],
+    },
     proxy: {
       "/api": {
         target: "http://127.0.0.1:3001",

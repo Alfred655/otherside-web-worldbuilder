@@ -12,6 +12,9 @@ import { PlayerController } from "./player-controller.js";
 import { BehaviorManager } from "./behavior-manager.js";
 import { HealthBar } from "./health-bar.js";
 import { HUD } from "./hud.js";
+import type { TemplatePlugin, GameRendererAPI, RaycastHit } from "./plugins/template-plugin.js";
+import { DefaultPlugin } from "./plugins/default-plugin.js";
+import type { AssetLoader } from "./asset-loader.js";
 import {
   buildProceduralSky,
   buildProceduralTerrain,
@@ -84,7 +87,23 @@ export class GameRenderer {
   private characterAnimations = new Map<string, CharacterAnimation>();
   private lastEntityPositions = new Map<string, THREE.Vector3>();
 
+  // Plugin system
+  private plugin: TemplatePlugin = new DefaultPlugin();
+
+  // Asset system
+  private assetLoader: AssetLoader | null = null;
+
   constructor(private spec: GameSpec) {}
+
+  /** Attach a template plugin (call before init) */
+  setPlugin(plugin: TemplatePlugin) {
+    this.plugin = plugin;
+  }
+
+  /** Attach an asset loader for GLTF model support (call before init) */
+  setAssetLoader(loader: AssetLoader) {
+    this.assetLoader = loader;
+  }
 
   // ── Initialisation ──────────────────────────────────────────────────────
   init() {
@@ -164,7 +183,11 @@ export class GameRenderer {
 
     window.addEventListener("resize", this.onResize);
     document.addEventListener("mousedown", this.onMouseDown);
+    document.addEventListener("keydown", this.onKeyDown);
     this.renderer.domElement.addEventListener("click", this.onClick);
+
+    // Initialize plugin with API facade
+    this.plugin.init(this.buildPluginAPI());
   }
 
   // ── Game loop ───────────────────────────────────────────────────────────
@@ -225,6 +248,7 @@ export class GameRenderer {
         FIXED_DT,
       );
       this.applyBehaviorEvents(events);
+      this.plugin.update(FIXED_DT);
       this.playerCtrl.update(FIXED_DT);
       this.world.step(this.eventQueue);
       this.processCollisionEvents();
@@ -380,7 +404,24 @@ export class GameRenderer {
     let object3d: THREE.Object3D;
     let materials: THREE.MeshStandardMaterial[];
 
-    if (meshSpec.kind === "compound") {
+    // Try to use a 3D asset model if assetId is present and preloaded
+    const assetModel = entSpec.assetId && this.assetLoader
+      ? this.assetLoader.getModelSync(entSpec.assetId)
+      : null;
+
+    if (assetModel) {
+      // GLTF model from asset catalog
+      assetModel.position.set(transform.position.x, transform.position.y, transform.position.z);
+      assetModel.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
+      assetModel.scale.set(
+        assetModel.scale.x * scale.x,
+        assetModel.scale.y * scale.y,
+        assetModel.scale.z * scale.z,
+      );
+      this.scene.add(assetModel);
+      object3d = assetModel;
+      materials = collectMaterials(assetModel);
+    } else if (meshSpec.kind === "compound") {
       // Compound mesh — group of parts
       const group = buildCompoundMesh(meshSpec.parts, matSpec.color);
       group.position.set(transform.position.x, transform.position.y, transform.position.z);
@@ -806,6 +847,8 @@ export class GameRenderer {
       this.characterAnimations.delete(ent.spec.id);
       this.lastEntityPositions.delete(ent.spec.id);
     }
+    // Notify plugin
+    this.plugin.onEntityDestroyed?.(ent);
   }
 
   // ── Sync Three.js ← Rapier ─────────────────────────────────────────────
@@ -838,6 +881,13 @@ export class GameRenderer {
 
     if (this.health <= 0) {
       this.endGame("lost", "Game Over");
+      return;
+    }
+
+    // Plugin-owned end conditions
+    const pluginResult = this.plugin.checkEndConditions?.();
+    if (pluginResult) {
+      this.endGame(pluginResult, pluginResult === "won" ? "You win!" : "Game Over");
       return;
     }
 
@@ -923,6 +973,7 @@ export class GameRenderer {
     this.state = "playing";
     this.behaviors.reset();
     this.flashTimers.clear();
+    this.plugin.reset();
 
     const sp = this.spec.player.spawnPoint;
     this.playerCtrl.resetTo(sp.x, sp.y, sp.z);
@@ -934,7 +985,88 @@ export class GameRenderer {
     this.playerCtrl.requestLock();
   }
 
+  // ── Plugin API facade ────────────────────────────────────────────────────
+  private buildPluginAPI(): GameRendererAPI {
+    const self = this;
+    return {
+      get camera() { return self.camera; },
+      get scene() { return self.scene; },
+      get world() { return self.world; },
+      get playerCollider() { return self.playerCollider!; },
+
+      getPlayerPosition: () => {
+        const p = self.playerCtrl.position;
+        return { x: p.x, y: p.y, z: p.z };
+      },
+      isPointerLocked: () => self.playerCtrl.isLocked,
+
+      getScore: () => self.score,
+      addScore: (n: number) => { self.score += n; },
+      getHealth: () => self.health,
+      setHealth: (n: number) => { self.health = n; },
+      getGameState: () => self.state,
+      endGame: (state: "won" | "lost", message: string) => self.endGame(state, message),
+
+      getEntities: () => self.entities,
+      spawnEntity: (spec: Entity, spawned = true) => {
+        const ent = self.spawnEntity(spec, spawned);
+        self.entities.push(ent);
+        return ent;
+      },
+      destroyEntity: (ent: RuntimeEntity) => self.destroyEntity(ent),
+      damageEntity: (ent: RuntimeEntity, amount: number) => {
+        ent.health -= amount;
+        self.flashEntity(ent);
+        if (ent.health <= 0) {
+          self.destroyEntity(ent);
+        }
+      },
+
+      performRaycast: (maxRange: number): RaycastHit | null => {
+        const camOrigin = new THREE.Vector3();
+        const dir = new THREE.Vector3();
+        self.camera.getWorldPosition(camOrigin);
+        self.camera.getWorldDirection(dir);
+        const origin = camOrigin.clone().add(dir.clone().multiplyScalar(0.5));
+
+        const ray = new RAPIER.Ray(
+          { x: origin.x, y: origin.y, z: origin.z },
+          { x: dir.x, y: dir.y, z: dir.z },
+        );
+        const hit = self.world.castRay(
+          ray, maxRange, true,
+          undefined, undefined,
+          self.playerCollider!,
+        );
+        if (!hit) return null;
+
+        const ent = self.colliderMap.get(hit.collider.handle);
+        if (!ent || !ent.active || ent.maxHealth <= 0) return null;
+
+        const point = origin.clone().add(dir.clone().multiplyScalar(hit.timeOfImpact));
+        return { entity: ent, point, distance: hit.timeOfImpact };
+      },
+
+      showAttackLine: (from: THREE.Vector3, to: THREE.Vector3) => self.showAttackLine(from, to),
+      showHitMarker: () => self.hud.showHitMarker(),
+      showDamageNumber: (amount: number, _worldPos: THREE.Vector3) => self.hud.showDamageNumber(amount),
+      flashAttack: () => self.hud.flashAttack(),
+      flashDamage: () => self.hud.flashDamage(),
+      showMessage: (text: string) => self.hud.showMessage(text),
+      hideMessage: () => self.hud.hideMessage(),
+      getHUDContainer: () => {
+        // Return the HUD's container element for plugins to append to
+        return (self.hud as any).container as HTMLElement;
+      },
+    };
+  }
+
   // ── Events ──────────────────────────────────────────────────────────────
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (this.state !== "playing") return;
+    this.plugin.onKeyDown?.(e.code);
+  };
+
   private onClick = () => {
     if (this.state === "waiting") {
       this.state = "playing";
@@ -954,8 +1086,11 @@ export class GameRenderer {
     if (this.state !== "playing") return;
     if (!this.playerCtrl.isLocked) return;
     if (e.button !== 0) return;
-    if (this.attackCooldown > 0) return;
 
+    // Let plugin handle attack first (it manages its own cooldown)
+    if (this.plugin.onAttack()) return;
+
+    if (this.attackCooldown > 0) return;
     this.attackCooldown = this.spec.player.attackCooldown;
     this.performAttack();
   };
@@ -969,6 +1104,7 @@ export class GameRenderer {
   // ── Cleanup ─────────────────────────────────────────────────────────────
   dispose() {
     cancelAnimationFrame(this.animId);
+    this.plugin.dispose();
     this.playerCtrl.dispose();
     this.hud.dispose();
     this.sky?.dispose();
@@ -979,6 +1115,7 @@ export class GameRenderer {
     this.lastEntityPositions.clear();
     this.renderer.domElement.removeEventListener("click", this.onClick);
     document.removeEventListener("mousedown", this.onMouseDown);
+    document.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("resize", this.onResize);
     this.renderer.domElement.remove();
     this.renderer.dispose();

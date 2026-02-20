@@ -237,6 +237,7 @@ export const EntitySchema = z.object({
   physics: PhysicsSchema.optional(),
   behaviors: z.array(BehaviorSchema).default([]),
   health: z.number().positive().optional(),
+  assetId: z.string().optional(),  // reference to asset catalog entry
 });
 
 // ---------------------------------------------------------------------------

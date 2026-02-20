@@ -39,33 +39,35 @@ This is a **pnpm workspace monorepo** for a 3D game engine/worldbuilder that use
 
 - **`packages/shared`** (`@otherside/shared`) — Zod schemas and inferred TypeScript types defining the `GameSpec` format. All game data (entities, behaviors, terrain, rules, player config) is validated through `schema.ts`. Sample game specs live in `sample-specs/`.
 
-- **`packages/ai`** (`@otherside/ai`) — AI generation layer using the Anthropic SDK (`@anthropic-ai/sdk`). Contains a 3-step generation pipeline and a spec refiner. Runs server-side only (API key never exposed to browser).
+- **`packages/ai`** (`@otherside/ai`) — AI generation layer using the Anthropic SDK (`@anthropic-ai/sdk`). Contains a 2-step generation pipeline (merged generator + validator) and a spec refiner. Runs server-side only (API key never exposed to browser).
 
-- **`packages/server`** (`@otherside/server`) — Express 5 backend. Exposes `POST /api/generate` and `POST /api/refine` endpoints. Loads `ANTHROPIC_API_KEY` from root `.env` via `dotenv.config({ path: "../../.env" })` (pnpm runs from the package directory, not repo root). All server timeouts are set to 0 (disabled) since LLM pipeline calls take 60-120s.
+- **`packages/server`** (`@otherside/server`) — Express 5 backend. Exposes `POST /api/generate` (SSE streaming) and `POST /api/refine` (JSON) endpoints. Loads `ANTHROPIC_API_KEY` from root `.env` via `dotenv.config({ path: "../../.env" })` (pnpm runs from the package directory, not repo root). All server timeouts are set to 0 (disabled) since LLM pipeline calls can take several minutes.
 
 - **`packages/engine`** (`@otherside/engine`) — Browser-based 3D game client using Three.js for rendering and Rapier WASM (`@dimforge/rapier3d-compat`) for physics. Vite bundles and serves it on port 3000, with proxy to port 3001 for API calls.
 
 ### AI Generation Pipeline (`packages/ai`)
 
-The pipeline (`pipeline.ts`) runs 3 sequential LLM calls using `claude-sonnet-4-6`:
+The pipeline (`pipeline.ts`) runs 2 steps using `claude-sonnet-4-6`, with real-time progress via an `onProgress` callback:
 
-1. **Designer** (`max_tokens: 1024`) — Takes user prompt → outputs structured text design document (theme, terrain, entities, rules). Matched against a template library (`templates.ts`) with 4 layout patterns: arena, corridor, open_world, platformer.
+1. **Generator** (`max_tokens: 32768`, 3 retries, streamed) — Single merged LLM call that takes user prompt → valid `GameSpec` JSON directly. Combines creative design (theme, entities, behaviors) with technical building (schema compliance, physics rules) in one `GENERATOR_SYSTEM_PROMPT`. Matched against a template library (`templates.ts`) with 4 layout patterns: arena, corridor, open_world, platformer.
 
-2. **Builder** (`max_tokens: 16384`, 3 retries) — Converts design doc → valid `GameSpec` JSON. On parse/validation failure, retries with error context appended to prompt.
-
-3. **Validator** — Runs programmatic checks (`validator.ts`): enemy spawn distance, out-of-bounds, patrol bounds, NPC/collectible overlaps, collectible clustering. `autoFixSpec()` fixes issues programmatically first. Only calls LLM if programmatic fix leaves remaining issues.
+2. **Validator** — Runs programmatic checks (`validator.ts`): enemy spawn distance, out-of-bounds, patrol bounds, NPC/collectible overlaps, collectible clustering. `autoFixSpec()` fixes issues programmatically first. Only calls LLM (`claude-haiku-4-5-20251001` for speed) if programmatic fix leaves remaining issues.
 
 Key design decisions:
+- Designer + Builder merged into a single LLM call to cut generation time
+- `onProgress` callback emits status strings ("Designing and building your world...", "Validating...", "Retrying...") consumed by server SSE endpoint
+- Validator LLM fix uses Haiku (fast + cheap) since it's a rare path with graceful fallback
+- `claude-sonnet-4-6` does NOT support assistant message prefill — use `extractJSON()` to find JSON in response instead
 - Overlap detection only checks NPC and collectible entities — props (walls, pillars) naturally overlap with adjacent entities
-- Designer prompt caps entities at 6-12 gameplay entities + max 4 props to keep pipeline fast
+- Generator prompt caps entities at 12 total + max 4 props to keep pipeline fast
 - `SpecRefiner` also validates + auto-fixes after refinement
-- Total pipeline time: ~60-120s (each LLM call ~20-40s)
+- Total pipeline time: ~20-40s happy path (single LLM call ~20-40s)
 
 ### Engine Architecture
 
 The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `CreationUI` → user describes game → fetch `/api/generate` → `GameRenderer.init()` → `GameRenderer.start()`. Refinements hit `/api/refine`, dispose the old renderer, and create a new one with the updated spec.
 
-**`creation-ui.ts`** is the DOM-based creation/refinement interface. Shows a full-screen input overlay initially, then a chat bar at the bottom after game generation. Uses AbortController with 5-minute timeout on fetch calls. Handles all API communication with the server.
+**`creation-ui.ts`** is the DOM-based creation/refinement interface. Shows a full-screen input overlay initially, then a chat bar at the bottom after game generation. Generation uses SSE streaming (`/api/generate` returns `text/event-stream`) to show real-time progress updates in the loading overlay. Refinement uses standard JSON fetch (`/api/refine`). Uses AbortController with 5-minute timeout on fetch calls.
 
 **`game-renderer.ts`** is the core game orchestrator (~800 lines). It owns:
 - Fixed-timestep game loop (60Hz physics, requestAnimationFrame render)
@@ -104,4 +106,4 @@ The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `C
 - `RuntimeEntity` (in `types.ts`) bridges the spec-level `Entity` with runtime state (Three.js mesh, Rapier body/collider, health, active flag)
 - Attack line VFX uses `CylinderGeometry` mesh, not `THREE.Line` (macOS WebGL ignores `linewidth > 1`)
 - dotenv path: server loads `.env` from `../../.env` relative to its package dir since pnpm sets CWD to the package directory
-- Vite proxy config: target uses `127.0.0.1` (not `localhost`) to avoid IPv4/IPv6 resolution issues; `configure` callback logs proxy requests/responses/errors for debugging
+- Vite proxy config: target uses `127.0.0.1` (not `localhost`) to avoid IPv4/IPv6 resolution issues; `configure` callback logs proxy requests/responses/errors for debugging; flushes headers for SSE (`text/event-stream`) responses to prevent buffering

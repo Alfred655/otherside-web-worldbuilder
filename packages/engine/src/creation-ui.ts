@@ -1,6 +1,7 @@
-import type { GameSpec } from "@otherside/shared";
+import type { GameSpec, ShooterSpec } from "@otherside/shared";
 
-type SpecCallback = (spec: GameSpec) => void;
+type AnySpec = GameSpec | ShooterSpec;
+type SpecCallback = (spec: AnySpec) => void | Promise<void>;
 
 interface ChatMessage {
   role: "user" | "system" | "error";
@@ -14,30 +15,72 @@ interface ExampleCard {
   accent: string;
 }
 
-const EXAMPLE_CARDS: ExampleCard[] = [
+interface TemplateOption {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  accent: string;
+  placeholder: string;
+  examples: ExampleCard[];
+}
+
+const TEMPLATE_OPTIONS: TemplateOption[] = [
   {
-    title: "Gladiator v Skeletons",
-    description:
-      "Battle waves of skeleton warriors in a Roman colosseum. Dodge attacks, collect power-ups, and survive.",
-    prompt:
-      "A gladiator arena where I fight waves of skeleton warriors. The arena is a Roman colosseum with stone pillars. Skeletons spawn in waves, there are health potions scattered around, and I win after defeating 10 enemies.",
+    id: "shooter",
+    name: "Shooter",
+    description: "First-person shooter with weapons, enemies, and wave-based combat",
+    icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2"/></svg>`,
+    accent: "#ff4444",
+    placeholder: "Describe your shooter... e.g. 'A neon arena with assault rifles and wave-based zombies'",
+    examples: [
+      {
+        title: "Warehouse Assault",
+        description: "Clear waves of enemies in a dark warehouse. Use pistol and shotgun, find ammo pickups between waves.",
+        prompt: "A dark warehouse arena shooter. I start with a pistol and find a shotgun. Enemies come in 3 waves — grunts first, then armored heavies, then a boss. Crates for cover, ammo pickups scattered around.",
+        accent: "#ff4444",
+      },
+      {
+        title: "Rooftop Standoff",
+        description: "Sniper battle on city rooftops at dusk. Take out enemies with an assault rifle in elimination mode.",
+        prompt: "A rooftop arena at dusk with a city skyline backdrop. I have an assault rifle. Enemies include snipers on platforms and enforcers that rush me. Elimination mode — kill all enemies to win.",
+        accent: "#ff6b35",
+      },
+      {
+        title: "Alien Hive",
+        description: "Fight alien creatures in a sci-fi facility. Neon lights, plasma weapons, and swarms of bugs.",
+        prompt: "A sci-fi facility overrun by alien bugs. Neon green lighting, metal walls. I have a plasma rifle. Aliens come in waves — small swarmers first, then large brutes. Health and ammo pickups in corners.",
+        accent: "#00ff88",
+      },
+    ],
+  },
+  {
+    id: "classic",
+    name: "Classic",
+    description: "Open-ended 3D game with custom entities, behaviors, and win conditions",
+    icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4"/><path d="M8 10v4"/><circle cx="16" cy="10" r="1"/><circle cx="18" cy="12" r="1"/></svg>`,
     accent: "#00e5ff",
-  },
-  {
-    title: "Army Battle",
-    description:
-      "An open battlefield with two squads fighting each other. Play as a lone mercenary, collect gold from fallen soldiers, and reach 50 gold to win.",
-    prompt:
-      "An open battlefield with two squads of 5 soldiers each fighting each other. Use spawner entities for each squad. The player is a lone mercenary who can fight for either side. Collectible gold coins drop when soldiers die. Reach 50 gold to win.",
-    accent: "#a855f7",
-  },
-  {
-    title: "Dungeon Puzzle",
-    description:
-      "Navigate through dark dungeon rooms solving puzzles. Find keys, avoid traps, and reach the exit.",
-    prompt:
-      "A dungeon puzzle game with dark corridors and rooms. I need to find 3 keys to unlock the exit door. There are spike traps to avoid, torch-lit hallways, and patrolling guard enemies.",
-    accent: "#ec4899",
+    placeholder: "Describe your game... e.g. 'A gladiator arena where I fight skeleton warriors'",
+    examples: [
+      {
+        title: "Gladiator v Skeletons",
+        description: "Battle waves of skeleton warriors in a Roman colosseum. Dodge attacks, collect power-ups, and survive.",
+        prompt: "A gladiator arena where I fight waves of skeleton warriors. The arena is a Roman colosseum with stone pillars. Skeletons spawn in waves, there are health potions scattered around, and I win after defeating 10 enemies.",
+        accent: "#00e5ff",
+      },
+      {
+        title: "Army Battle",
+        description: "An open battlefield with two squads fighting each other. Play as a lone mercenary, collect gold from fallen soldiers, and reach 50 gold to win.",
+        prompt: "An open battlefield with two squads of 5 soldiers each fighting each other. Use spawner entities for each squad. The player is a lone mercenary who can fight for either side. Collectible gold coins drop when soldiers die. Reach 50 gold to win.",
+        accent: "#a855f7",
+      },
+      {
+        title: "Dungeon Puzzle",
+        description: "Navigate through dark dungeon rooms solving puzzles. Find keys, avoid traps, and reach the exit.",
+        prompt: "A dungeon puzzle game with dark corridors and rooms. I need to find 3 keys to unlock the exit door. There are spike traps to avoid, torch-lit hallways, and patrolling guard enemies.",
+        accent: "#ec4899",
+      },
+    ],
   },
 ];
 
@@ -51,10 +94,13 @@ export class CreationUI {
   private errorEl!: HTMLDivElement;
   private textarea!: HTMLTextAreaElement;
   private generateBtn!: HTMLButtonElement;
-  private currentSpec: GameSpec | null = null;
+  private currentSpec: AnySpec | null = null;
+  private selectedTemplate: string = "";
   private messages: ChatMessage[] = [];
   private onSpec: SpecCallback;
   private styleTag: HTMLStyleElement;
+  private templateScreen!: HTMLDivElement;
+  private inputScreen!: HTMLDivElement;
 
   constructor(onSpec: SpecCallback) {
     this.onSpec = onSpec;
@@ -329,6 +375,74 @@ export class CreationUI {
         line-height: 1.5;
       }
 
+      /* ── Template Cards ──────────────────────────── */
+      .savi-template-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+        width: 100%;
+        max-width: 600px;
+        margin-bottom: 48px;
+      }
+      @media (max-width: 500px) {
+        .savi-template-grid { grid-template-columns: 1fr; }
+      }
+      .savi-template-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 2px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 28px 24px;
+        cursor: pointer;
+        transition: background 0.2s, border-color 0.3s, transform 0.2s, box-shadow 0.3s;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .savi-template-card:hover {
+        background: rgba(255, 255, 255, 0.08);
+        transform: translateY(-3px);
+      }
+      .savi-template-card-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+      }
+      .savi-template-card-name {
+        font-family: 'Magtsx', 'Space Grotesk', sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: #fff;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .savi-template-card-desc {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.45);
+        line-height: 1.5;
+      }
+      .savi-back-btn {
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: rgba(255, 255, 255, 0.5);
+        padding: 6px 16px;
+        border-radius: 6px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 13px;
+        cursor: pointer;
+        transition: border-color 0.2s, color 0.2s;
+        align-self: flex-start;
+        margin-bottom: 16px;
+      }
+      .savi-back-btn:hover {
+        border-color: rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.7);
+      }
+
       /* ── Footer ──────────────────────────────────── */
       .savi-footer {
         text-align: center;
@@ -443,20 +557,62 @@ export class CreationUI {
     const blob3 = document.createElement("div");
     blob3.className = "savi-blob savi-blob-3";
 
-    // Content container
-    const content = document.createElement("div");
-    content.className = "savi-content";
+    // ── Template selection screen ───────────────────────────
+    this.templateScreen = document.createElement("div");
+    this.templateScreen.className = "savi-content";
 
-    // Hero title
-    const title = document.createElement("h1");
-    title.className = "savi-hero-title";
-    title.textContent = "Build Worlds With Words";
+    const heroTitle = document.createElement("h1");
+    heroTitle.className = "savi-hero-title";
+    heroTitle.textContent = "Build Worlds With Words";
 
-    // Subtitle
-    const subtitle = document.createElement("p");
-    subtitle.className = "savi-subtitle";
-    subtitle.textContent =
-      "Describe your dream game in plain English and bring it to life instantly.";
+    const heroSub = document.createElement("p");
+    heroSub.className = "savi-subtitle";
+    heroSub.textContent = "Choose a game template to get started.";
+
+    const templateGrid = document.createElement("div");
+    templateGrid.className = "savi-template-grid";
+
+    for (const tpl of TEMPLATE_OPTIONS) {
+      const card = document.createElement("div");
+      card.className = "savi-template-card";
+      card.onclick = () => this.selectTemplate(tpl);
+      card.onmouseenter = () => {
+        card.style.borderColor = tpl.accent;
+        card.style.boxShadow = `0 0 24px ${tpl.accent}33`;
+      };
+      card.onmouseleave = () => {
+        card.style.borderColor = "rgba(255, 255, 255, 0.08)";
+        card.style.boxShadow = "none";
+      };
+
+      const icon = document.createElement("div");
+      icon.className = "savi-template-card-icon";
+      icon.style.color = tpl.accent;
+      icon.innerHTML = tpl.icon;
+
+      const name = document.createElement("div");
+      name.className = "savi-template-card-name";
+      name.textContent = tpl.name;
+
+      const desc = document.createElement("div");
+      desc.className = "savi-template-card-desc";
+      desc.textContent = tpl.description;
+
+      card.append(icon, name, desc);
+      templateGrid.appendChild(card);
+    }
+
+    this.templateScreen.append(heroTitle, heroSub, templateGrid);
+
+    // ── Input screen (initially hidden) ─────────────────────
+    this.inputScreen = document.createElement("div");
+    this.inputScreen.className = "savi-content";
+    this.inputScreen.style.display = "none";
+
+    const backBtn = document.createElement("button");
+    backBtn.className = "savi-back-btn";
+    backBtn.textContent = "< Back to templates";
+    backBtn.onclick = () => this.showTemplateScreen();
 
     // Input group
     const inputGroup = document.createElement("div");
@@ -468,7 +624,6 @@ export class CreationUI {
     const inputInner = document.createElement("div");
     inputInner.className = "savi-input-inner";
 
-    // Textarea row with lightning icon
     const textareaRow = document.createElement("div");
     textareaRow.className = "savi-textarea-row";
 
@@ -478,13 +633,10 @@ export class CreationUI {
 
     this.textarea = document.createElement("textarea");
     this.textarea.className = "savi-textarea";
-    this.textarea.placeholder =
-      "Describe your game... e.g. 'A gladiator arena where I fight skeleton warriors'";
     this.textarea.rows = 3;
 
     textareaRow.append(lightningIcon, this.textarea);
 
-    // Actions row
     const actionsRow = document.createElement("div");
     actionsRow.className = "savi-input-actions";
 
@@ -503,16 +655,38 @@ export class CreationUI {
     inputGlow.appendChild(inputInner);
     inputGroup.appendChild(inputGlow);
 
+    // Examples label
+    const examplesLabel = document.createElement("div");
+    examplesLabel.className = "savi-examples-label";
+    examplesLabel.textContent = "Examples";
+
     const examplesGrid = document.createElement("div");
     examplesGrid.className = "savi-examples";
 
-    for (const card of EXAMPLE_CARDS) {
+    // Examples will be populated by selectTemplate
+    this.inputScreen.append(backBtn, inputGroup, examplesLabel, examplesGrid);
+
+    // Assemble
+    this.overlay.append(gridBg, blob1, blob2, blob3, this.templateScreen, this.inputScreen);
+    document.body.appendChild(this.overlay);
+  }
+
+  private selectTemplate(tpl: TemplateOption) {
+    this.selectedTemplate = tpl.id === "classic" ? "" : tpl.id;
+
+    // Update placeholder
+    this.textarea.placeholder = tpl.placeholder;
+    this.textarea.value = "";
+
+    // Update examples
+    const examplesGrid = this.inputScreen.querySelector(".savi-examples")!;
+    examplesGrid.innerHTML = "";
+    for (const card of tpl.examples) {
       const cardEl = document.createElement("div");
       cardEl.className = "savi-card";
       cardEl.onclick = () => {
         this.textarea.value = card.prompt;
         this.textarea.focus();
-        // Scroll to top so the textarea is visible
         this.overlay.scrollTo({ top: 0, behavior: "smooth" });
       };
 
@@ -532,13 +706,20 @@ export class CreationUI {
       examplesGrid.appendChild(cardEl);
     }
 
-    // Assemble
-    content.append(title, subtitle, inputGroup, examplesGrid);
-    this.overlay.append(gridBg, blob1, blob2, blob3, content);
-    document.body.appendChild(this.overlay);
-
-    // Auto-focus textarea
+    // Switch screens
+    this.templateScreen.style.display = "none";
+    this.inputScreen.style.display = "flex";
+    this.overlay.scrollTo({ top: 0 });
     setTimeout(() => this.textarea.focus(), 100);
+  }
+
+  private showTemplateScreen() {
+    this.inputScreen.style.display = "none";
+    this.templateScreen.style.display = "flex";
+    this.selectedTemplate = "";
+    this.textarea.value = "";
+    this.hideError();
+    this.overlay.scrollTo({ top: 0 });
   }
 
   // ── Loading overlay ─────────────────────────────────────────────────────
@@ -646,7 +827,7 @@ export class CreationUI {
     btn.disabled = true;
     textarea.disabled = true;
     btn.textContent = "Generating...";
-    this.showLoading("Designing and building your world...");
+    this.showLoading("Designing and building your world... (takes about 4-5 minutes)");
 
     try {
       const controller = new AbortController();
@@ -655,7 +836,7 @@ export class CreationUI {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed }),
+        body: JSON.stringify({ prompt: trimmed, template: this.selectedTemplate || undefined }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -675,7 +856,7 @@ export class CreationUI {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let spec: GameSpec | null = null;
+      let spec: AnySpec | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -694,7 +875,7 @@ export class CreationUI {
           if (event.type === "status") {
             this.updateLoadingText(event.message);
           } else if (event.type === "complete") {
-            spec = event.spec as GameSpec;
+            spec = event.spec as AnySpec;
           } else if (event.type === "error") {
             throw new Error(event.message);
           }
@@ -713,12 +894,15 @@ export class CreationUI {
       this.showChatBar();
 
       this.addChatMessage({ role: "user", text: trimmed });
+      const entityCount = "entities" in spec
+        ? `${spec.entities.length} entities`
+        : `${(spec as ShooterSpec).enemies.length} enemies, ${(spec as ShooterSpec).weapons.length} weapons`;
       this.addChatMessage({
         role: "system",
-        text: `Generated "${spec.name}" — ${spec.entities.length} entities`,
+        text: `Generated "${spec.name}" — ${entityCount}`,
       });
 
-      this.onSpec(spec);
+      await this.onSpec(spec);
     } catch (err) {
       this.hideLoading();
       btn.disabled = false;
@@ -752,7 +936,11 @@ export class CreationUI {
       const res = await fetch("/api/refine", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spec: this.currentSpec, instruction }),
+        body: JSON.stringify({
+          spec: this.currentSpec,
+          instruction,
+          template: this.selectedTemplate || undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -766,18 +954,21 @@ export class CreationUI {
         throw new Error(msg);
       }
 
-      const { spec } = (await res.json()) as { spec: GameSpec };
+      const { spec } = (await res.json()) as { spec: AnySpec };
       this.currentSpec = spec;
 
       this.hideLoading();
       this.chatInput.disabled = false;
       this.chatSendBtn.disabled = false;
+      const refineCount = "entities" in spec
+        ? `${spec.entities.length} entities`
+        : `${(spec as ShooterSpec).enemies.length} enemies, ${(spec as ShooterSpec).weapons.length} weapons`;
       this.addChatMessage({
         role: "system",
-        text: `Updated "${spec.name}" — ${spec.entities.length} entities`,
+        text: `Updated "${spec.name}" — ${refineCount}`,
       });
 
-      this.onSpec(spec);
+      await this.onSpec(spec);
     } catch (err) {
       this.hideLoading();
       this.chatInput.disabled = false;

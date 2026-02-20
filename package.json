@@ -1,6 +1,7 @@
 {
   "name": "otherside-web-worldbuilder",
   "private": true,
+  "type": "module",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"

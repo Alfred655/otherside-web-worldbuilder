@@ -3,20 +3,33 @@ import {
   type PipelineOptions,
   type PipelineResult,
 } from "./pipeline.js";
+import { ShooterPipeline } from "./shooter-pipeline.js";
+import type { ShooterSpec } from "@otherside/shared";
 
 export interface GenerateOptions extends PipelineOptions {}
 
+export type GenerateResult = PipelineResult | { spec: ShooterSpec };
+
 export class GameGenerator {
   private pipeline: GenerationPipeline;
+  private shooterPipeline: ShooterPipeline;
 
   constructor(apiKey: string, options: GenerateOptions = {}) {
     this.pipeline = new GenerationPipeline(apiKey, options);
+    this.shooterPipeline = new ShooterPipeline(apiKey, options);
   }
 
   async generate(
     prompt: string,
     onProgress?: (status: string) => void,
-  ): Promise<PipelineResult> {
+    template?: string,
+  ): Promise<GenerateResult> {
+    if (template === "shooter") {
+      const spec = await this.shooterPipeline.generate(prompt, onProgress);
+      return { spec };
+    }
+
+    // Default: legacy GameSpec pipeline
     return this.pipeline.generate(prompt, onProgress);
   }
 }
