@@ -24,11 +24,11 @@ const EXAMPLE_CARDS: ExampleCard[] = [
     accent: "#00e5ff",
   },
   {
-    title: "Forest Exploration",
+    title: "Army Battle",
     description:
-      "Wander through a mystical forest collecting glowing orbs. Discover hidden paths and avoid roaming creatures.",
+      "An open battlefield with two squads fighting each other. Play as a lone mercenary, collect gold from fallen soldiers, and reach 50 gold to win.",
     prompt:
-      "A peaceful mystical forest exploration game with glowing collectible orbs hidden among trees. There are gentle roaming creatures to avoid, hidden paths between large trees, and a score goal of collecting 15 orbs.",
+      "An open battlefield with two squads of 5 soldiers each fighting each other. Use spawner entities for each squad. The player is a lone mercenary who can fight for either side. Collectible gold coins drop when soldiers die. Reach 50 gold to win.",
     accent: "#a855f7",
   },
   {
@@ -456,7 +456,7 @@ export class CreationUI {
     const subtitle = document.createElement("p");
     subtitle.className = "savi-subtitle";
     subtitle.textContent =
-      "Describe your dream game in plain English. Savi builds it instantly.";
+      "Describe your dream game in plain English and bring it to life instantly.";
 
     // Input group
     const inputGroup = document.createElement("div");
@@ -639,7 +639,7 @@ export class CreationUI {
     btn.disabled = true;
     textarea.disabled = true;
     btn.textContent = "Generating...";
-    this.showLoading("Generating your game... (this takes 1-2 minutes)");
+    this.showLoading("Generating your game... (this takes 3-4 minutes)");
 
     try {
       const controller = new AbortController();

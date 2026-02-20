@@ -10,7 +10,7 @@ export const Vec3Schema = z.object({
   z: z.number(),
 });
 
-export const ColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color (#rrggbb)");
+export const ColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color (#rrggbb)").transform(c => c.toLowerCase());
 
 // ---------------------------------------------------------------------------
 // World config
@@ -302,7 +302,7 @@ export const UISchema = z.object({
 
 export const GameSpecSchema = z.object({
   name: z.string().min(1),
-  version: z.string().default("1.0.0"),
+  version: z.union([z.string(), z.number().transform(String)]).default("1.0.0"),
   world: WorldConfigSchema,
   terrain: TerrainSchema,
   entities: z.array(EntitySchema).min(1),

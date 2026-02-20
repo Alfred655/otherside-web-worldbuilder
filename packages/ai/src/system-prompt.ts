@@ -121,7 +121,8 @@ Title, description, HUD elements.
 
 Be creative with the theme. Give enemies interesting patrol paths and behaviors.
 IMPORTANT CONSTRAINTS:
-- Include 6–12 gameplay entities (NPCs + collectibles). Keep it focused.
+- HARD LIMIT: maximum 12 entities total (NPCs + collectibles + props combined). For large groups (armies, swarms), use 2-3 spawner entities instead of individual units.
+- Reserve compound meshes for 3-4 key NPCs. Use primitive meshes for collectibles and props.
 - Do NOT create individual wall/floor/ceiling entities — the terrain handles the ground.
 - Props (pillars, crates, etc.) are optional decoration. Keep props to 4 or fewer.
 - Be CONCISE: one line per entity field, no multi-paragraph descriptions.
@@ -136,6 +137,7 @@ Output ONLY valid JSON — no markdown, no code fences, no commentary.
 ${SCHEMA_DOCS}
 
 ## Technical Rules
+- Colors MUST be lowercase hex: \`#ff0000\` not \`#FF0000\` or \`red\`.
 - Terrain Y size is floor thickness (~1). Entities sit above y=0.
 - Entity Y position = half mesh height (so it sits on the floor).
 - "kinematic" bodyType for NPCs that patrol/follow. "static" for immovable. "dynamic" for physics.
@@ -148,6 +150,36 @@ ${SCHEMA_DOCS}
 - Compound mesh: provide boundingSize for physics collider sizing. Name parts for animation: humanoid (body, head, leftArm, rightArm, leftLeg, rightLeg), creature (body, head, legFL, legFR, legBL, legBR, tail), flying (body, wingL, wingR, tail), turret (base, body, barrel).
 - biome and scatter only work when terrain type is "procedural".
 - proceduralTexture adds canvas-generated tileable texture to any entity material.
+- HARD LIMIT: maximum 12 entities. Use spawner behaviors for large groups.
+- Use primitive meshes for collectibles and props. Reserve compound meshes for 3-4 key NPCs.
+
+## Example Entities (for reference — use positions from the design document)
+\`\`\`json
+{
+  "id": "guard-1", "name": "Guard", "type": "npc",
+  "transform": { "position": { "x": 15, "y": 1.0, "z": 10 }, "rotation": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+  "mesh": { "kind": "compound", "parts": [
+    { "shape": "box", "size": { "x": 0.8, "y": 1.0, "z": 0.5 }, "offset": { "x": 0, "y": 0, "z": 0 }, "color": "#884422" },
+    { "shape": "sphere", "size": { "x": 0.4, "y": 0.4, "z": 0.4 }, "offset": { "x": 0, "y": 0.7, "z": 0 }, "color": "#ffcc99" },
+    { "shape": "box", "size": { "x": 0.2, "y": 0.8, "z": 0.2 }, "offset": { "x": -0.5, "y": 0, "z": 0 }, "color": "#884422" },
+    { "shape": "box", "size": { "x": 0.2, "y": 0.8, "z": 0.2 }, "offset": { "x": 0.5, "y": 0, "z": 0 }, "color": "#884422" }
+  ], "boundingSize": { "x": 1.4, "y": 2.0, "z": 0.5 } },
+  "material": { "color": "#884422" },
+  "physics": { "bodyType": "kinematic", "collider": "capsule" },
+  "behaviors": [{ "type": "patrol", "path": [{ "x": 15, "y": 1.0, "z": 10 }, { "x": 15, "y": 1.0, "z": -10 }], "speed": 2 }, { "type": "damage", "amount": 10, "on": "contact" }],
+  "health": 50
+}
+\`\`\`
+\`\`\`json
+{
+  "id": "coin-1", "name": "Gold Coin", "type": "collectible",
+  "transform": { "position": { "x": 5, "y": 0.5, "z": 8 }, "rotation": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+  "mesh": { "kind": "primitive", "shape": "cylinder", "size": { "x": 0.5, "y": 0.1, "z": 0.5 } },
+  "material": { "color": "#ffd700", "metalness": 0.8, "roughness": 0.2 },
+  "physics": { "bodyType": "static", "collider": "cylinder", "sensor": true },
+  "behaviors": [{ "type": "rotate", "axis": "y", "speed": 2 }, { "type": "collectible", "effect": "score", "value": 10 }]
+}
+\`\`\`
 
 Follow the design document exactly. Convert every described entity into JSON.`;
 
