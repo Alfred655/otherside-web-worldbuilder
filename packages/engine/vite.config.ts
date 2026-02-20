@@ -23,8 +23,12 @@ export default defineConfig({
           proxy.on("proxyReq", (_proxyReq, req) => {
             console.log(`[vite-proxy] → ${req.method} ${req.url}`);
           });
-          proxy.on("proxyRes", (proxyRes, req) => {
+          proxy.on("proxyRes", (proxyRes, req, res) => {
             console.log(`[vite-proxy] ← ${proxyRes.statusCode} ${req.url}`);
+            // Flush headers immediately for SSE so events stream through the proxy
+            if (proxyRes.headers["content-type"]?.includes("text/event-stream")) {
+              (res as any).flushHeaders?.();
+            }
           });
         },
       },
