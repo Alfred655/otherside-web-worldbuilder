@@ -54,7 +54,6 @@ export class SpecRefiner {
         system: REFINE_SYSTEM_PROMPT,
         messages: [
           { role: "user", content: userContent },
-          { role: "assistant", content: "{" },
         ],
       }).finalMessage();
 
@@ -70,9 +69,7 @@ export class SpecRefiner {
 
       const rawText =
         response.content[0].type === "text" ? response.content[0].text : "";
-      // Prepend the prefill "{" to reconstruct full JSON
-      const text = "{" + rawText;
-      const json = extractJSON(text);
+      const json = extractJSON(rawText);
 
       try {
         const parsed = JSON.parse(json);

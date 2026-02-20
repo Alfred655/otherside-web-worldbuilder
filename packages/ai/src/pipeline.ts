@@ -98,10 +98,7 @@ export class GenerationPipeline {
           model: this.model,
           max_tokens: 32768,
           system: GENERATOR_SYSTEM_PROMPT,
-          messages: [
-            { role: "user", content: userContent },
-            { role: "assistant", content: "{" },
-          ],
+          messages: [{ role: "user", content: userContent }],
         })
         .finalMessage();
 
@@ -118,9 +115,7 @@ export class GenerationPipeline {
 
       const rawText =
         response.content[0].type === "text" ? response.content[0].text : "";
-      // Prepend the prefill "{" to reconstruct full JSON
-      const text = "{" + rawText;
-      const json = extractJSON(text);
+      const json = extractJSON(rawText);
 
       try {
         const parsed = JSON.parse(json);
@@ -200,7 +195,6 @@ export class GenerationPipeline {
               role: "user",
               content: `Fix these issues in the game spec:\n${issues.map((i) => `- ${i.description}`).join("\n")}\n\nCurrent spec:\n${JSON.stringify(fixed, null, 2)}`,
             },
-            { role: "assistant", content: "{" },
           ],
         })
         .finalMessage();
@@ -214,8 +208,7 @@ export class GenerationPipeline {
 
       const rawText =
         response.content[0].type === "text" ? response.content[0].text : "";
-      const text = "{" + rawText;
-      const json = extractJSON(text);
+      const json = extractJSON(rawText);
       const result = GameSpecSchema.safeParse(JSON.parse(json));
       if (result.success) {
         console.log("[Pipeline:Validator] LLM fix applied ✓");
