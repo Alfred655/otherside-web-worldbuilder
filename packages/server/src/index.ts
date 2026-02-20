@@ -68,7 +68,7 @@ app.post("/api/refine", async (req, res) => {
 // In production, serve the Vite-built frontend
 const engineDist = path.resolve(__dirname, "../../engine/dist");
 app.use(express.static(engineDist));
-app.get("*", (_req, res) => {
+app.get("/{*splat}", (_req, res) => {
   res.sendFile(path.join(engineDist, "index.html"));
 });
 
