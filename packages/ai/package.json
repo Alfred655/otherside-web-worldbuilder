@@ -1,0 +1,18 @@
+{
+  "name": "@otherside/ai",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "@otherside/shared": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

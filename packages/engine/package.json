@@ -1,0 +1,21 @@
+{
+  "name": "@otherside/engine",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "three": "^0.171.0"
+  },
+  "devDependencies": {
+    "@otherside/shared": "workspace:*",
+    "@types/three": "^0.171.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0"
+  }
+}

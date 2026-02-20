@@ -1,0 +1,22 @@
+{
+  "name": "@otherside/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@otherside/ai": "workspace:*",
+    "@otherside/shared": "workspace:*",
+    "@types/express": "^5.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

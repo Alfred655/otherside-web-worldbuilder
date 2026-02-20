@@ -1,0 +1,10 @@
+export { GameGenerator } from "./game-generator.js";
+export type { GenerateOptions } from "./game-generator.js";
+export { SpecRefiner } from "./spec-refiner.js";
+export type { RefineOptions } from "./spec-refiner.js";
+export { GenerationPipeline } from "./pipeline.js";
+export type { PipelineOptions, PipelineResult } from "./pipeline.js";
+export { validateSpec, autoFixSpec } from "./validator.js";
+export type { ValidationIssue } from "./validator.js";
+export { TEMPLATES, selectTemplate } from "./templates.js";
+export type { GameTemplate } from "./templates.js";
