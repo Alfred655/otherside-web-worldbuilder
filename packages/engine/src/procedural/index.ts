@@ -1,0 +1,12 @@
+export { SeededRNG, PerlinNoise2D, fbm2D, hashString } from "./seeded-rng.js";
+export { generateTexture } from "./texture-generator.js";
+export { buildProceduralSky } from "./sky-builder.js";
+export type { SkyResult } from "./sky-builder.js";
+export { buildProceduralTerrain } from "./terrain-builder.js";
+export type { TerrainResult } from "./terrain-builder.js";
+export { generateScatter } from "./scatter-system.js";
+export type { ScatterResult } from "./scatter-system.js";
+export { buildCompoundMesh, buildCharacterPreset, collectMaterials } from "./character-builder.js";
+export type { CharacterPreset } from "./character-builder.js";
+export { createCharacterAnimation, detectPreset } from "./character-animator.js";
+export type { CharacterAnimation } from "./character-animator.js";

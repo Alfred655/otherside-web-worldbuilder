@@ -29,7 +29,7 @@ No test runner or linter is configured yet.
 1. Set `ANTHROPIC_API_KEY` in `.env` at the repo root (never committed — in `.gitignore`)
 2. Run `npx pnpm dev` to start both servers
 3. Open **http://localhost:3000** (Vite UI). Do NOT use port 3001 — that's the API-only server.
-4. Vite proxies `/api/*` requests to Express on port 3001. Changes to `vite.config.ts` require a full restart (HMR doesn't reload proxy config).
+4. Vite proxies `/api/*` requests to Express on port 3001. Changes to `vite.config.ts` require a full Vite restart (HMR doesn't reload proxy config).
 
 ## Architecture
 
@@ -39,17 +39,33 @@ This is a **pnpm workspace monorepo** for a 3D game engine/worldbuilder that use
 
 - **`packages/shared`** (`@otherside/shared`) — Zod schemas and inferred TypeScript types defining the `GameSpec` format. All game data (entities, behaviors, terrain, rules, player config) is validated through `schema.ts`. Sample game specs live in `sample-specs/`.
 
-- **`packages/ai`** (`@otherside/ai`) — AI generation layer using the Anthropic SDK (`@anthropic-ai/sdk`). `GameGenerator` takes a natural language prompt → calls Claude (`claude-sonnet-4-6`) → validates against Zod → returns `GameSpec`. `SpecRefiner` takes an existing spec + modification instruction → returns updated spec. Both auto-retry once on validation failure. Runs server-side only (API key never exposed to browser).
+- **`packages/ai`** (`@otherside/ai`) — AI generation layer using the Anthropic SDK (`@anthropic-ai/sdk`). Contains a 3-step generation pipeline and a spec refiner. Runs server-side only (API key never exposed to browser).
 
-- **`packages/server`** (`@otherside/server`) — Express 5 backend. Exposes `POST /api/generate` and `POST /api/refine` endpoints that use the ai package. Loads `ANTHROPIC_API_KEY` from root `.env` via `dotenv.config({ path: "../../.env" })` (pnpm runs from the package directory, not repo root).
+- **`packages/server`** (`@otherside/server`) — Express 5 backend. Exposes `POST /api/generate` and `POST /api/refine` endpoints. Loads `ANTHROPIC_API_KEY` from root `.env` via `dotenv.config({ path: "../../.env" })` (pnpm runs from the package directory, not repo root). All server timeouts are set to 0 (disabled) since LLM pipeline calls take 60-120s.
 
 - **`packages/engine`** (`@otherside/engine`) — Browser-based 3D game client using Three.js for rendering and Rapier WASM (`@dimforge/rapier3d-compat`) for physics. Vite bundles and serves it on port 3000, with proxy to port 3001 for API calls.
+
+### AI Generation Pipeline (`packages/ai`)
+
+The pipeline (`pipeline.ts`) runs 3 sequential LLM calls using `claude-sonnet-4-6`:
+
+1. **Designer** (`max_tokens: 1024`) — Takes user prompt → outputs structured text design document (theme, terrain, entities, rules). Matched against a template library (`templates.ts`) with 4 layout patterns: arena, corridor, open_world, platformer.
+
+2. **Builder** (`max_tokens: 16384`, 3 retries) — Converts design doc → valid `GameSpec` JSON. On parse/validation failure, retries with error context appended to prompt.
+
+3. **Validator** — Runs programmatic checks (`validator.ts`): enemy spawn distance, out-of-bounds, patrol bounds, NPC/collectible overlaps, collectible clustering. `autoFixSpec()` fixes issues programmatically first. Only calls LLM if programmatic fix leaves remaining issues.
+
+Key design decisions:
+- Overlap detection only checks NPC and collectible entities — props (walls, pillars) naturally overlap with adjacent entities
+- Designer prompt caps entities at 6-12 gameplay entities + max 4 props to keep pipeline fast
+- `SpecRefiner` also validates + auto-fixes after refinement
+- Total pipeline time: ~60-120s (each LLM call ~20-40s)
 
 ### Engine Architecture
 
 The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `CreationUI` → user describes game → fetch `/api/generate` → `GameRenderer.init()` → `GameRenderer.start()`. Refinements hit `/api/refine`, dispose the old renderer, and create a new one with the updated spec.
 
-**`creation-ui.ts`** is the DOM-based creation/refinement interface. Shows a full-screen input overlay initially, then a chat bar at the bottom after game generation. Handles all API communication with the server.
+**`creation-ui.ts`** is the DOM-based creation/refinement interface. Shows a full-screen input overlay initially, then a chat bar at the bottom after game generation. Uses AbortController with 5-minute timeout on fetch calls. Handles all API communication with the server.
 
 **`game-renderer.ts`** is the core game orchestrator (~800 lines). It owns:
 - Fixed-timestep game loop (60Hz physics, requestAnimationFrame render)
@@ -88,3 +104,4 @@ The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `C
 - `RuntimeEntity` (in `types.ts`) bridges the spec-level `Entity` with runtime state (Three.js mesh, Rapier body/collider, health, active flag)
 - Attack line VFX uses `CylinderGeometry` mesh, not `THREE.Line` (macOS WebGL ignores `linewidth > 1`)
 - dotenv path: server loads `.env` from `../../.env` relative to its package dir since pnpm sets CWD to the package directory
+- Vite proxy config: target uses `127.0.0.1` (not `localhost`) to avoid IPv4/IPv6 resolution issues; `configure` callback logs proxy requests/responses/errors for debugging

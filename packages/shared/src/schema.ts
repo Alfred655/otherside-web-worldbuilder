@@ -28,11 +28,19 @@ export const WorldConfigSchema = z.object({
   ambientLightIntensity: z.number().min(0).max(5).default(0.4),
   fog: FogSchema.optional(),
   gravity: Vec3Schema.default({ x: 0, y: -9.81, z: 0 }),
+  timeOfDay: z.enum(["dawn", "morning", "noon", "afternoon", "dusk", "night", "midnight"]).optional(),
 });
 
 // ---------------------------------------------------------------------------
 // Terrain
 // ---------------------------------------------------------------------------
+
+export const ScatterItemSchema = z.object({
+  kind: z.enum(["tree", "rock", "bush", "crystal"]),
+  density: z.number().min(0).max(1).default(0.3),
+  minScale: z.number().positive().default(0.5),
+  maxScale: z.number().positive().default(1.5),
+});
 
 export const TerrainSchema = z.object({
   type: z.enum(["flat", "heightmap", "procedural"]),
@@ -40,9 +48,13 @@ export const TerrainSchema = z.object({
   material: z.object({
     color: ColorSchema,
     texture: z.string().optional(),
+    proceduralTexture: z.enum(["wood", "stone", "metal", "fabric"]).optional(),
     metalness: z.number().min(0).max(1).default(0),
     roughness: z.number().min(0).max(1).default(0.8),
   }),
+  seed: z.number().int().optional(),
+  biome: z.enum(["temperate", "desert", "arctic", "volcanic"]).optional(),
+  scatter: z.array(ScatterItemSchema).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -60,9 +72,24 @@ export const ModelMeshSchema = z.object({
   url: z.string().url(),
 });
 
+export const CompoundPartSchema = z.object({
+  shape: z.enum(["box", "sphere", "cylinder"]),
+  size: Vec3Schema,
+  offset: Vec3Schema,
+  rotation: Vec3Schema.default({ x: 0, y: 0, z: 0 }),
+  color: ColorSchema.optional(),
+});
+
+export const CompoundMeshSchema = z.object({
+  kind: z.literal("compound"),
+  parts: z.array(CompoundPartSchema).min(1),
+  boundingSize: Vec3Schema.optional(),
+});
+
 export const MeshSchema = z.discriminatedUnion("kind", [
   PrimitiveMeshSchema,
   ModelMeshSchema,
+  CompoundMeshSchema,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -72,6 +99,7 @@ export const MeshSchema = z.discriminatedUnion("kind", [
 export const MaterialSchema = z.object({
   color: ColorSchema,
   texture: z.string().optional(),
+  proceduralTexture: z.enum(["wood", "stone", "metal", "fabric"]).optional(),
   metalness: z.number().min(0).max(1).default(0),
   roughness: z.number().min(0).max(1).default(0.5),
 });
@@ -291,8 +319,11 @@ export type Vec3 = z.infer<typeof Vec3Schema>;
 export type Fog = z.infer<typeof FogSchema>;
 export type WorldConfig = z.infer<typeof WorldConfigSchema>;
 export type Terrain = z.infer<typeof TerrainSchema>;
+export type ScatterItem = z.infer<typeof ScatterItemSchema>;
 export type PrimitiveMesh = z.infer<typeof PrimitiveMeshSchema>;
 export type ModelMesh = z.infer<typeof ModelMeshSchema>;
+export type CompoundPart = z.infer<typeof CompoundPartSchema>;
+export type CompoundMesh = z.infer<typeof CompoundMeshSchema>;
 export type Mesh = z.infer<typeof MeshSchema>;
 export type Material = z.infer<typeof MaterialSchema>;
 export type ColliderShapeType = z.infer<typeof ColliderShape>;

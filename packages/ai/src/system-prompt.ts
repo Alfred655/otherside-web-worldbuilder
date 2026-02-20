@@ -19,15 +19,21 @@ export const SCHEMA_DOCS = `## GameSpec Schema
   "ambientLightColor": "#rrggbb",
   "ambientLightIntensity": number (0–5),
   "fog": { "color": "#rrggbb", "near": positive, "far": positive } | omit,
-  "gravity": { "x": 0, "y": -9.81, "z": 0 }
+  "gravity": { "x": 0, "y": -9.81, "z": 0 },
+  "timeOfDay": "dawn"|"morning"|"noon"|"afternoon"|"dusk"|"night"|"midnight" | omit
 }
+When timeOfDay is set, the engine generates a procedural gradient sky with sun/moon and clouds. skyColor is still required as a fallback.
 
 ### Terrain
 {
   "type": "flat" | "heightmap" | "procedural",
   "size": Vec3,
-  "material": { "color": "#rrggbb", "roughness": 0–1, "metalness": 0–1 }
+  "material": { "color": "#rrggbb", "roughness": 0–1, "metalness": 0–1, "proceduralTexture": "wood"|"stone"|"metal"|"fabric" | omit },
+  "seed": integer | omit,
+  "biome": "temperate"|"desert"|"arctic"|"volcanic" | omit,
+  "scatter": [{ "kind": "tree"|"rock"|"bush"|"crystal", "density": 0–1, "minScale": positive, "maxScale": positive }] | omit
 }
+When type is "procedural" and biome is set, the engine generates terrain with Perlin noise heightmap, biome-based vertex colors, and optional scatter objects. If scatter is omitted but biome is set, the engine uses sensible defaults per biome.
 
 ### Entity
 {
@@ -36,7 +42,7 @@ export const SCHEMA_DOCS = `## GameSpec Schema
   "type": "npc" | "prop" | "collectible" | "trigger" | "projectile",
   "transform": { "position": Vec3, "rotation": Vec3, "scale": Vec3 },
   "mesh": Mesh,
-  "material": { "color": "#rrggbb", "roughness": 0–1, "metalness": 0–1 },
+  "material": { "color": "#rrggbb", "roughness": 0–1, "metalness": 0–1, "proceduralTexture": "wood"|"stone"|"metal"|"fabric" | omit },
   "physics": Physics | omit,
   "behaviors": Behavior[],
   "health": positive number | omit
@@ -47,6 +53,11 @@ NOTE: Entity type must NOT be "player" — player is configured separately.
 ### Mesh — discriminated on "kind"
 Primitive: { "kind": "primitive", "shape": "box"|"sphere"|"cylinder"|"plane", "size": Vec3 }
 Model:     { "kind": "model", "url": "https://..." }
+Compound:  { "kind": "compound", "parts": CompoundPart[], "boundingSize": Vec3 | omit }
+
+### CompoundPart
+{ "shape": "box"|"sphere"|"cylinder", "size": Vec3, "offset": Vec3, "rotation": Vec3 (default 0,0,0), "color": "#rrggbb" | omit }
+Use compound meshes to build multi-part characters with distinct silhouettes (humanoid, creature, flying, turret shapes). Name parts semantically (body, head, leftArm, rightArm, leftLeg, rightLeg for humanoid; body, head, legFL, legFR, legBL, legBR, tail for creature; body, wingL, wingR, tail for flying; base, body, barrel for turret) to enable procedural animation.
 
 ### Physics
 {
@@ -91,11 +102,11 @@ Your output is a structured text document (NOT JSON). Be specific and creative.
 Include these sections:
 # Game: [title]
 ## Theme & Atmosphere
-Describe the mood, time of day, colors, lighting, fog. Be specific with hex colors.
+Describe the mood, time of day (dawn/morning/noon/afternoon/dusk/night/midnight for procedural sky), colors, lighting, fog. Be specific with hex colors.
 ## Terrain
-Size (X×Z), material color, style.
+Size (X×Z), material color, style. Consider using type "procedural" with a biome (temperate/desert/arctic/volcanic) for natural terrain with hills and scatter objects (trees, rocks, bushes, crystals).
 ## Entities
-List every entity with: name, type (npc/collectible/prop), position (x,y,z), shape, color, size, behaviors, health (if NPC).
+List every entity with: name, type (npc/collectible/prop), position (x,y,z), shape (primitive or compound for multi-part characters), color, size, behaviors, health (if NPC). Use compound meshes for NPCs to give them distinct silhouettes (humanoid, creature, flying, turret).
 CRITICAL PLACEMENT RULES:
 - NPCs must be at least 10 units (XZ distance) from the player spawn
 - Collectibles should be spread across the map, not clustered
@@ -128,12 +139,15 @@ ${SCHEMA_DOCS}
 - Terrain Y size is floor thickness (~1). Entities sit above y=0.
 - Entity Y position = half mesh height (so it sits on the floor).
 - "kinematic" bodyType for NPCs that patrol/follow. "static" for immovable. "dynamic" for physics.
-- Collider shape must match mesh shape (sphere→sphere, box→box).
+- Collider shape must match mesh shape (sphere→sphere, box→box). For compound meshes, use "box" or "capsule" collider.
 - NPCs need "health" to be killable.
 - Collectibles need "sensor": true so players walk through them.
 - Patrol paths need ≥2 points within terrain bounds.
 - All entities must have unique IDs.
 - NPCs must be ≥10 units (XZ) from player spawnPoint.
+- Compound mesh: provide boundingSize for physics collider sizing. Name parts for animation: humanoid (body, head, leftArm, rightArm, leftLeg, rightLeg), creature (body, head, legFL, legFR, legBL, legBR, tail), flying (body, wingL, wingR, tail), turret (base, body, barrel).
+- biome and scatter only work when terrain type is "procedural".
+- proceduralTexture adds canvas-generated tileable texture to any entity material.
 
 Follow the design document exactly. Convert every described entity into JSON.`;
 

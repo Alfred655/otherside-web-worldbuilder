@@ -5,13 +5,15 @@ import type { HealthBar } from "./health-bar.js";
 
 export interface RuntimeEntity {
   spec: Entity;
-  object3d: THREE.Mesh;
+  object3d: THREE.Object3D;
   body: RAPIER.RigidBody | null;
   collider: RAPIER.Collider | null;
   active: boolean;
   health: number;
   maxHealth: number;
   healthBar: HealthBar | null;
+  /** Cached flat list of all MeshStandardMaterials on this entity */
+  materials: THREE.MeshStandardMaterial[];
   /** true for entities created at runtime by a spawner */
   spawned: boolean;
   /** seconds since spawn (used for projectile lifetime) */

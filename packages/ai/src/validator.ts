@@ -30,6 +30,25 @@ function entityRadius(e: Entity): number {
     const sc = e.transform.scale;
     return Math.max(s.x * sc.x, s.y * sc.y, s.z * sc.z) / 2;
   }
+  if (e.mesh.kind === "compound") {
+    if (e.mesh.boundingSize) {
+      const bs = e.mesh.boundingSize;
+      const sc = e.transform.scale;
+      return Math.max(bs.x * sc.x, bs.y * sc.y, bs.z * sc.z) / 2;
+    }
+    // Compute AABB from parts
+    let maxExtent = 0;
+    for (const p of e.mesh.parts) {
+      const ext = Math.max(
+        Math.abs(p.offset.x) + p.size.x / 2,
+        Math.abs(p.offset.y) + p.size.y / 2,
+        Math.abs(p.offset.z) + p.size.z / 2,
+      );
+      maxExtent = Math.max(maxExtent, ext);
+    }
+    const sc = e.transform.scale;
+    return maxExtent * Math.max(sc.x, sc.y, sc.z);
+  }
   return 0.5;
 }
 

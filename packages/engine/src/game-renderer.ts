@@ -12,6 +12,23 @@ import { PlayerController } from "./player-controller.js";
 import { BehaviorManager } from "./behavior-manager.js";
 import { HealthBar } from "./health-bar.js";
 import { HUD } from "./hud.js";
+import {
+  buildProceduralSky,
+  buildProceduralTerrain,
+  generateScatter,
+  buildCompoundMesh,
+  collectMaterials,
+  generateTexture,
+  hashString,
+  createCharacterAnimation,
+  detectPreset,
+} from "./procedural/index.js";
+import type {
+  SkyResult,
+  TerrainResult,
+  ScatterResult,
+  CharacterAnimation,
+} from "./procedural/index.js";
 
 export type { RuntimeEntity } from "./types.js";
 
@@ -60,6 +77,13 @@ export class GameRenderer {
   private attackLine: THREE.Mesh | null = null;
   private attackLineTimer = 0;
 
+  // Procedural systems
+  private sky: SkyResult | null = null;
+  private terrainResult: TerrainResult | null = null;
+  private scatterResult: ScatterResult | null = null;
+  private characterAnimations = new Map<string, CharacterAnimation>();
+  private lastEntityPositions = new Map<string, THREE.Vector3>();
+
   constructor(private spec: GameSpec) {}
 
   // ── Initialisation ──────────────────────────────────────────────────────
@@ -101,6 +125,21 @@ export class GameRenderer {
     sun.shadow.camera.top = S;
     sun.shadow.camera.bottom = -S;
     this.scene.add(sun);
+
+    // Procedural sky (if timeOfDay is set)
+    this.sky = buildProceduralSky(
+      this.scene,
+      this.spec.world,
+      { x: this.spec.terrain.size.x, z: this.spec.terrain.size.z },
+    );
+    if (this.sky) {
+      // Update directional light to match sun direction
+      sun.position.copy(this.sky.sunDirection.clone().multiplyScalar(30));
+      sun.intensity = this.sky.sunDirection.y > 0 ? 1.0 : 0.15;
+      if (this.sky.sunDirection.y <= 0) {
+        sun.color.set(0x4466aa); // moonlight tint
+      }
+    }
 
     this.camera = new THREE.PerspectiveCamera(
       70,
@@ -193,6 +232,27 @@ export class GameRenderer {
     }
 
     this.syncTransforms();
+
+    // Animate procedural sky (cloud movement)
+    this.sky?.update(frameDt);
+
+    // Tick character animations
+    for (const ent of this.entities) {
+      if (!ent.active) continue;
+      const anim = this.characterAnimations.get(ent.spec.id);
+      if (!anim) continue;
+      const lastPos = this.lastEntityPositions.get(ent.spec.id);
+      const curPos = ent.object3d.position;
+      let isMoving = false;
+      if (lastPos) {
+        const dx = curPos.x - lastPos.x;
+        const dz = curPos.z - lastPos.z;
+        isMoving = (dx * dx + dz * dz) > 0.0001;
+        lastPos.copy(curPos);
+      }
+      anim.update(frameDt, isMoving);
+    }
+
     this.updateHealthBars();
     this.checkEndConditions();
     this.hud.tick(frameDt);
@@ -249,6 +309,40 @@ export class GameRenderer {
   // ── Terrain ─────────────────────────────────────────────────────────────
   private buildTerrain() {
     const { size, material } = this.spec.terrain;
+
+    if (this.spec.terrain.type === "procedural") {
+      // Procedural terrain with heightmap
+      this.terrainResult = buildProceduralTerrain(
+        this.spec.terrain,
+        this.spec.name,
+        this.scene,
+      );
+
+      // Rapier heightfield collider
+      const { heights, nrows, ncols } = this.terrainResult;
+      const bodyDesc = RAPIER.RigidBodyDesc.fixed();
+      const body = this.world.createRigidBody(bodyDesc);
+      const colDesc = RAPIER.ColliderDesc.heightfield(
+        nrows,
+        ncols,
+        heights,
+        { x: size.x, y: 1, z: size.z },
+      ).setFriction(1.0);
+      this.world.createCollider(colDesc, body);
+
+      // Scatter system
+      const seed = this.spec.terrain.seed ?? hashString(this.spec.name);
+      this.scatterResult = generateScatter(
+        this.terrainResult,
+        this.spec.terrain,
+        this.scene,
+        this.world,
+        seed,
+      );
+      return;
+    }
+
+    // Flat terrain (existing path)
     const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
     const mat = new THREE.MeshStandardMaterial({
       color: material.color,
@@ -270,8 +364,6 @@ export class GameRenderer {
 
     const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, -size.y / 2, 0);
     const body = this.world.createRigidBody(bodyDesc);
-    RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
-      .setFriction(1.0);
     const colDesc = RAPIER.ColliderDesc.cuboid(
       size.x / 2,
       size.y / 2,
@@ -285,18 +377,40 @@ export class GameRenderer {
     const { transform, mesh: meshSpec, material: matSpec, physics } = entSpec;
     const scale = transform.scale;
 
-    const geo = this.makeGeometry(meshSpec, scale);
-    const mat = new THREE.MeshStandardMaterial({
-      color: matSpec.color,
-      roughness: matSpec.roughness,
-      metalness: matSpec.metalness,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(transform.position.x, transform.position.y, transform.position.z);
-    mesh.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.scene.add(mesh);
+    let object3d: THREE.Object3D;
+    let materials: THREE.MeshStandardMaterial[];
+
+    if (meshSpec.kind === "compound") {
+      // Compound mesh — group of parts
+      const group = buildCompoundMesh(meshSpec.parts, matSpec.color);
+      group.position.set(transform.position.x, transform.position.y, transform.position.z);
+      group.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
+      this.scene.add(group);
+      object3d = group;
+      materials = collectMaterials(group);
+
+      // Set up character animation if parts match a known preset
+      const preset = detectPreset(group);
+      if (preset) {
+        const anim = createCharacterAnimation(group, preset);
+        this.characterAnimations.set(entSpec.id, anim);
+        this.lastEntityPositions.set(entSpec.id, new THREE.Vector3(
+          transform.position.x, transform.position.y, transform.position.z,
+        ));
+      }
+    } else {
+      // Primitive or model mesh — single mesh
+      const geo = this.makeGeometry(meshSpec, scale);
+      const mat = this.buildMaterial(matSpec);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(transform.position.x, transform.position.y, transform.position.z);
+      mesh.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      object3d = mesh;
+      materials = [mat];
+    }
 
     let body: RAPIER.RigidBody | null = null;
     let collider: RAPIER.Collider | null = null;
@@ -321,18 +435,19 @@ export class GameRenderer {
     if (hp > 0 && entSpec.type === "npc") {
       healthBar = new HealthBar();
       healthBar.group.position.set(0, 1.5, 0);
-      mesh.add(healthBar.group);
+      object3d.add(healthBar.group);
     }
 
     const ent: RuntimeEntity = {
       spec: entSpec,
-      object3d: mesh,
+      object3d,
       body,
       collider,
       active: true,
       health: hp,
       maxHealth: hp,
       healthBar,
+      materials,
       spawned,
       age: 0,
     };
@@ -342,6 +457,25 @@ export class GameRenderer {
     }
 
     return ent;
+  }
+
+  /** Build a MeshStandardMaterial, applying procedural texture if specified. */
+  private buildMaterial(matSpec: { color: string; roughness: number; metalness: number; proceduralTexture?: string }): THREE.MeshStandardMaterial {
+    const opts: THREE.MeshStandardMaterialParameters = {
+      color: matSpec.color,
+      roughness: matSpec.roughness,
+      metalness: matSpec.metalness,
+    };
+
+    if (matSpec.proceduralTexture) {
+      const tex = generateTexture(
+        matSpec.proceduralTexture as "wood" | "stone" | "metal" | "fabric",
+        matSpec.color,
+      );
+      opts.map = tex;
+    }
+
+    return new THREE.MeshStandardMaterial(opts);
   }
 
   /** Spawn an entity at runtime from a SpawnTemplate */
@@ -406,7 +540,7 @@ export class GameRenderer {
         ? meshSpec.size
         : { x: 1, y: 1, z: 1 };
 
-    if (meshSpec.kind === "model") {
+    if (meshSpec.kind === "model" || meshSpec.kind === "compound") {
       return new THREE.BoxGeometry(scale.x, scale.y, scale.z);
     }
 
@@ -452,6 +586,22 @@ export class GameRenderer {
     meshSpec: MeshSpec,
     scale: Vec3,
   ): RAPIER.ColliderDesc | null {
+    // Compound mesh: use boundingSize or compute AABB from parts
+    if (meshSpec.kind === "compound") {
+      const bs = meshSpec.boundingSize ?? this.computeCompoundBounds(meshSpec.parts);
+      if (shape === "capsule") {
+        return RAPIER.ColliderDesc.capsule(
+          (bs.y * scale.y) / 2,
+          (Math.max(bs.x, bs.z) * scale.x) / 2,
+        );
+      }
+      return RAPIER.ColliderDesc.cuboid(
+        (bs.x * scale.x) / 2,
+        (bs.y * scale.y) / 2,
+        (bs.z * scale.z) / 2,
+      );
+    }
+
     const s =
       meshSpec.kind === "primitive" && meshSpec.size
         ? meshSpec.size
@@ -483,6 +633,22 @@ export class GameRenderer {
           (s.z * scale.z) / 2,
         );
     }
+  }
+
+  private computeCompoundBounds(parts: { size: Vec3; offset: Vec3 }[]): Vec3 {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (const p of parts) {
+      const hx = p.size.x / 2, hy = p.size.y / 2, hz = p.size.z / 2;
+      minX = Math.min(minX, p.offset.x - hx);
+      maxX = Math.max(maxX, p.offset.x + hx);
+      minY = Math.min(minY, p.offset.y - hy);
+      maxY = Math.max(maxY, p.offset.y + hy);
+      minZ = Math.min(minZ, p.offset.z - hz);
+      maxZ = Math.max(maxZ, p.offset.z + hz);
+    }
+    return { x: maxX - minX, y: maxY - minY, z: maxZ - minZ };
   }
 
   // ── Player ──────────────────────────────────────────────────────────────
@@ -606,8 +772,7 @@ export class GameRenderer {
   }
 
   private flashEntity(ent: RuntimeEntity) {
-    const mat = ent.object3d.material;
-    if (mat instanceof THREE.MeshStandardMaterial) {
+    for (const mat of ent.materials) {
       mat.emissive.set(0xff2222);
       mat.emissiveIntensity = 1.0;
     }
@@ -615,8 +780,7 @@ export class GameRenderer {
   }
 
   private restoreColor(ent: RuntimeEntity) {
-    const mat = ent.object3d.material;
-    if (mat instanceof THREE.MeshStandardMaterial) {
+    for (const mat of ent.materials) {
       mat.emissive.set(0x000000);
       mat.emissiveIntensity = 0;
     }
@@ -634,6 +798,13 @@ export class GameRenderer {
       this.world.removeRigidBody(ent.body);
       ent.body = null;
       ent.collider = null;
+    }
+    // Clean up character animation
+    const anim = this.characterAnimations.get(ent.spec.id);
+    if (anim) {
+      anim.dispose();
+      this.characterAnimations.delete(ent.spec.id);
+      this.lastEntityPositions.delete(ent.spec.id);
     }
   }
 
@@ -800,6 +971,12 @@ export class GameRenderer {
     cancelAnimationFrame(this.animId);
     this.playerCtrl.dispose();
     this.hud.dispose();
+    this.sky?.dispose();
+    this.terrainResult?.dispose();
+    this.scatterResult?.dispose();
+    for (const anim of this.characterAnimations.values()) anim.dispose();
+    this.characterAnimations.clear();
+    this.lastEntityPositions.clear();
     this.renderer.domElement.removeEventListener("click", this.onClick);
     document.removeEventListener("mousedown", this.onMouseDown);
     window.removeEventListener("resize", this.onResize);
