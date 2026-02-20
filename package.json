@@ -2,14 +2,19 @@
   "name": "otherside-web-worldbuilder",
   "private": true,
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "scripts": {
     "dev": "pnpm --filter @otherside/engine --filter @otherside/server -r --parallel dev",
     "dev:engine": "pnpm --filter @otherside/engine dev",
     "dev:server": "pnpm --filter @otherside/server dev",
     "build": "pnpm -r build",
-    "start": "node packages/server/dist/index.js",
+    "start": "tsx packages/server/src/index.ts",
     "typecheck": "pnpm -r typecheck"
+  },
+  "dependencies": {
+    "tsx": "^4.21.0"
   }
 }
