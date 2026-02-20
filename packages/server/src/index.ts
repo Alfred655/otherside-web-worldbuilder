@@ -34,15 +34,31 @@ app.post("/api/generate", async (req, res) => {
     return;
   }
 
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const sendEvent = (type: string, data: Record<string, unknown>) => {
+    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+  };
+
   try {
-    const { spec, designDoc } = await generator.generate(prompt);
-    console.log(`[generate] Done: "${spec.name}" (${spec.entities.length} entities)`);
-    res.json({ spec, designDoc });
+    const { spec } = await generator.generate(prompt, (status) => {
+      sendEvent("status", { message: status });
+    });
+    console.log(
+      `[generate] Done: "${spec.name}" (${spec.entities.length} entities)`,
+    );
+    sendEvent("complete", { spec });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed";
     console.error("[generate] Error:", message);
-    res.status(500).json({ error: message });
+    sendEvent("error", { message });
   }
+
+  res.end();
 });
 
 app.post("/api/refine", async (req, res) => {

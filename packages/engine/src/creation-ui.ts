@@ -624,6 +624,13 @@ export class CreationUI {
   }
 
   // ── API calls ──────────────────────────────────────────────────────────
+  private updateLoadingText(text: string) {
+    const label = this.loadingOverlay.querySelector(
+      ".savi-loading-label",
+    ) as HTMLElement;
+    if (label) label.textContent = text;
+  }
+
   private async handleGenerate(
     prompt: string,
     btn: HTMLButtonElement,
@@ -639,7 +646,7 @@ export class CreationUI {
     btn.disabled = true;
     textarea.disabled = true;
     btn.textContent = "Generating...";
-    this.showLoading("Generating your game... (this takes 3-4 minutes)");
+    this.showLoading("Designing and building your world...");
 
     try {
       const controller = new AbortController();
@@ -653,7 +660,7 @@ export class CreationUI {
       });
       clearTimeout(timeoutId);
 
-      if (!res.ok) {
+      if (!res.ok && res.headers.get("content-type")?.includes("application/json")) {
         const text = await res.text();
         let msg: string;
         try {
@@ -664,7 +671,40 @@ export class CreationUI {
         throw new Error(msg);
       }
 
-      const { spec } = (await res.json()) as { spec: GameSpec };
+      // Read SSE stream
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let spec: GameSpec | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from buffer
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop()!; // Keep incomplete chunk
+
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data: ")) continue;
+          const event = JSON.parse(line.slice(6));
+
+          if (event.type === "status") {
+            this.updateLoadingText(event.message);
+          } else if (event.type === "complete") {
+            spec = event.spec as GameSpec;
+          } else if (event.type === "error") {
+            throw new Error(event.message);
+          }
+        }
+      }
+
+      if (!spec) {
+        throw new Error("No game spec received from server");
+      }
+
       this.currentSpec = spec;
 
       // Hide creation overlay, show game + chat

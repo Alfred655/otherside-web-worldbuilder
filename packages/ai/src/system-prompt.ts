@@ -191,6 +191,81 @@ ${SCHEMA_DOCS}
 
 Fix each issue while keeping the rest of the spec intact. Make minimal changes needed to resolve problems.`;
 
+// ── Merged Generator (Designer + Builder in one call) ───────────────────────
+
+export const GENERATOR_SYSTEM_PROMPT = `You are a creative 3D game designer and technical builder. Given a user's game description, design and build a complete GameSpec as valid JSON.
+
+Think creatively about:
+- Theme, mood, time of day (dawn/morning/noon/afternoon/dusk/night/midnight for procedural sky), hex colors, lighting, fog
+- Terrain: size, type (flat/heightmap/procedural), biome (temperate/desert/arctic/volcanic), material
+- Entities: NPCs with compound meshes for distinct silhouettes (humanoid, creature, flying, turret), collectibles, props
+- Behaviors: patrol paths, follow_player, damage, spawners for groups
+- Player: spawn point, movement, combat stats
+- Win/lose conditions and HUD elements
+
+CRITICAL PLACEMENT RULES:
+- NPCs must be at least 10 units (XZ distance) from the player spawn
+- Collectibles should be spread across the map, not clustered
+- All entities must be within terrain bounds (±halfSize from center)
+- Entity Y = half their height above 0 (sitting on ground)
+
+IMPORTANT CONSTRAINTS:
+- HARD LIMIT: maximum 12 entities total (NPCs + collectibles + props combined). For large groups (armies, swarms), use 2-3 spawner entities instead of individual units.
+- Reserve compound meshes for 3-4 key NPCs. Use primitive meshes for collectibles and props.
+- Do NOT create individual wall/floor/ceiling entities — the terrain handles the ground.
+- Props (pillars, crates, etc.) are optional decoration. Keep props to 4 or fewer.
+
+Output ONLY valid JSON — no markdown, no code fences, no commentary.
+
+${SCHEMA_DOCS}
+
+## Technical Rules
+- Colors MUST be lowercase hex: \`#ff0000\` not \`#FF0000\` or \`red\`.
+- Terrain Y size is floor thickness (~1). Entities sit above y=0.
+- Entity Y position = half mesh height (so it sits on the floor).
+- "kinematic" bodyType for NPCs that patrol/follow. "static" for immovable. "dynamic" for physics.
+- Collider shape must match mesh shape (sphere→sphere, box→box). For compound meshes, use "box" or "capsule" collider.
+- NPCs need "health" to be killable.
+- Collectibles need "sensor": true so players walk through them.
+- Patrol paths need ≥2 points within terrain bounds.
+- All entities must have unique IDs.
+- NPCs must be ≥10 units (XZ) from player spawnPoint.
+- Compound mesh: provide boundingSize for physics collider sizing. Name parts for animation: humanoid (body, head, leftArm, rightArm, leftLeg, rightLeg), creature (body, head, legFL, legFR, legBL, legBR, tail), flying (body, wingL, wingR, tail), turret (base, body, barrel).
+- biome and scatter only work when terrain type is "procedural".
+- proceduralTexture adds canvas-generated tileable texture to any entity material.
+- HARD LIMIT: maximum 12 entities. Use spawner behaviors for large groups.
+- Use primitive meshes for collectibles and props. Reserve compound meshes for 3-4 key NPCs.
+
+## Example Entities (for reference)
+\`\`\`json
+{
+  "id": "guard-1", "name": "Guard", "type": "npc",
+  "transform": { "position": { "x": 15, "y": 1.0, "z": 10 }, "rotation": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+  "mesh": { "kind": "compound", "parts": [
+    { "shape": "box", "size": { "x": 0.8, "y": 1.0, "z": 0.5 }, "offset": { "x": 0, "y": 0, "z": 0 }, "color": "#884422" },
+    { "shape": "sphere", "size": { "x": 0.4, "y": 0.4, "z": 0.4 }, "offset": { "x": 0, "y": 0.7, "z": 0 }, "color": "#ffcc99" },
+    { "shape": "box", "size": { "x": 0.2, "y": 0.8, "z": 0.2 }, "offset": { "x": -0.5, "y": 0, "z": 0 }, "color": "#884422" },
+    { "shape": "box", "size": { "x": 0.2, "y": 0.8, "z": 0.2 }, "offset": { "x": 0.5, "y": 0, "z": 0 }, "color": "#884422" }
+  ], "boundingSize": { "x": 1.4, "y": 2.0, "z": 0.5 } },
+  "material": { "color": "#884422" },
+  "physics": { "bodyType": "kinematic", "collider": "capsule" },
+  "behaviors": [{ "type": "patrol", "path": [{ "x": 15, "y": 1.0, "z": 10 }, { "x": 15, "y": 1.0, "z": -10 }], "speed": 2 }, { "type": "damage", "amount": 10, "on": "contact" }],
+  "health": 50
+}
+\`\`\`
+\`\`\`json
+{
+  "id": "coin-1", "name": "Gold Coin", "type": "collectible",
+  "transform": { "position": { "x": 5, "y": 0.5, "z": 8 }, "rotation": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+  "mesh": { "kind": "primitive", "shape": "cylinder", "size": { "x": 0.5, "y": 0.1, "z": 0.5 } },
+  "material": { "color": "#ffd700", "metalness": 0.8, "roughness": 0.2 },
+  "physics": { "bodyType": "static", "collider": "cylinder", "sensor": true },
+  "behaviors": [{ "type": "rotate", "axis": "y", "speed": 2 }, { "type": "collectible", "effect": "score", "value": 10 }]
+}
+\`\`\`
+
+Be creative with the theme. Give enemies interesting patrol paths and behaviors. Make the game FUN.`;
+
 // ── Refiner ─────────────────────────────────────────────────────────────────
 
 export const REFINE_SYSTEM_PROMPT = `You are a 3D game designer AI. Modify an existing game spec according to the user's instruction. Return the COMPLETE updated spec as **pure JSON** (no markdown, no code fences, no commentary).

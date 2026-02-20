@@ -1,4 +1,3 @@
-import type { GameSpec } from "@otherside/shared";
 import {
   GenerationPipeline,
   type PipelineOptions,
@@ -14,7 +13,10 @@ export class GameGenerator {
     this.pipeline = new GenerationPipeline(apiKey, options);
   }
 
-  async generate(prompt: string): Promise<PipelineResult> {
-    return this.pipeline.generate(prompt);
+  async generate(
+    prompt: string,
+    onProgress?: (status: string) => void,
+  ): Promise<PipelineResult> {
+    return this.pipeline.generate(prompt, onProgress);
   }
 }
