@@ -858,35 +858,54 @@ export class CreationUI {
       let buffer = "";
       let spec: AnySpec | null = null;
 
+      let sseError: string | null = null;
+
+      const parseSSEBuffer = () => {
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop()!; // Keep incomplete chunk
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "status") {
+              this.updateLoadingText(event.message);
+            } else if (event.type === "complete") {
+              spec = event.spec as AnySpec;
+            } else if (event.type === "error") {
+              sseError = event.message;
+            }
+          } catch (e) {
+            console.error("[SSE] Failed to parse event:", line.slice(0, 200), e);
+          }
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
+        parseSSEBuffer();
+      }
 
-        // Parse SSE events from buffer
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop()!; // Keep incomplete chunk
+      // Process any remaining data in the buffer after stream ends
+      buffer += decoder.decode(); // flush decoder
+      if (buffer.trim()) {
+        buffer += "\n\n"; // ensure trailing delimiter so split works
+        parseSSEBuffer();
+      }
 
-        for (const part of parts) {
-          const line = part.trim();
-          if (!line.startsWith("data: ")) continue;
-          const event = JSON.parse(line.slice(6));
-
-          if (event.type === "status") {
-            this.updateLoadingText(event.message);
-          } else if (event.type === "complete") {
-            spec = event.spec as AnySpec;
-          } else if (event.type === "error") {
-            throw new Error(event.message);
-          }
-        }
+      if (sseError) {
+        throw new Error(sseError);
       }
 
       if (!spec) {
         throw new Error("No game spec received from server");
       }
 
-      this.currentSpec = spec;
+      // TypeScript can't track closure mutations for narrowing, so cast here
+      const receivedSpec = spec as AnySpec;
+      this.currentSpec = receivedSpec;
 
       // Hide creation overlay, show game + chat
       this.overlay.style.display = "none";
@@ -894,15 +913,15 @@ export class CreationUI {
       this.showChatBar();
 
       this.addChatMessage({ role: "user", text: trimmed });
-      const entityCount = "entities" in spec
-        ? `${spec.entities.length} entities`
-        : `${(spec as ShooterSpec).enemies.length} enemies, ${(spec as ShooterSpec).weapons.length} weapons`;
+      const entityCount = "entities" in receivedSpec
+        ? `${(receivedSpec as GameSpec).entities.length} entities`
+        : `${(receivedSpec as ShooterSpec).enemies.length} enemies, ${(receivedSpec as ShooterSpec).weapons.length} weapons`;
       this.addChatMessage({
         role: "system",
-        text: `Generated "${spec.name}" — ${entityCount}`,
+        text: `Generated "${receivedSpec.name}" — ${entityCount}`,
       });
 
-      await this.onSpec(spec);
+      await this.onSpec(receivedSpec);
     } catch (err) {
       this.hideLoading();
       btn.disabled = false;
@@ -961,7 +980,7 @@ export class CreationUI {
       this.chatInput.disabled = false;
       this.chatSendBtn.disabled = false;
       const refineCount = "entities" in spec
-        ? `${spec.entities.length} entities`
+        ? `${(spec as GameSpec).entities.length} entities`
         : `${(spec as ShooterSpec).enemies.length} enemies, ${(spec as ShooterSpec).weapons.length} weapons`;
       this.addChatMessage({
         role: "system",
