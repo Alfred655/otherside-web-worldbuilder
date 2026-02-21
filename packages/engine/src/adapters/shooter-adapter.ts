@@ -183,6 +183,7 @@ function enemyToEntity(enemy: ShooterEnemy): Entity {
     physics: enemy.physics ?? { bodyType: "kinematic", collider: "capsule" },
     behaviors,
     health: enemy.health,
+    ...(enemy.assetId ? { assetId: enemy.assetId } : {}),
   };
 }
 
@@ -332,5 +333,6 @@ function coverToEntity(cover: CoverObject): Entity {
     physics: { bodyType: "static", collider: "box" },
     behaviors,
     health: cover.destructible ? cover.health : undefined,
+    ...(cover.assetId ? { assetId: cover.assetId } : {}),
   };
 }

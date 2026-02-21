@@ -19,6 +19,12 @@ export class GameGenerator {
     this.shooterPipeline = new ShooterPipeline(apiKey, options);
   }
 
+  /** Provide the asset catalog summary so generated specs reference real 3D models */
+  setAssetSummary(summary: string) {
+    this.pipeline.setAssetSummary(summary);
+    this.shooterPipeline.setAssetSummary(summary);
+  }
+
   async generate(
     prompt: string,
     onProgress?: (status: string) => void,

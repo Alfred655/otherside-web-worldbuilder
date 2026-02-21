@@ -14,10 +14,16 @@ export interface ShooterPipelineOptions {
 export class ShooterPipeline {
   private client: Anthropic;
   private model: string;
+  private assetSummary: string = "";
 
   constructor(apiKey: string, options: ShooterPipelineOptions = {}) {
     this.client = new Anthropic({ apiKey });
     this.model = options.model ?? "claude-sonnet-4-6";
+  }
+
+  /** Provide the asset catalog summary so generated specs reference real 3D models */
+  setAssetSummary(summary: string) {
+    this.assetSummary = summary;
   }
 
   async generate(
@@ -28,10 +34,14 @@ export class ShooterPipeline {
     onProgress?.("Designing your shooter...");
     console.log("[ShooterPipeline] Generating ShooterSpec JSON...");
 
+    const systemPrompt = this.assetSummary
+      ? `${SHOOTER_GENERATOR_PROMPT}\n\n${this.assetSummary}`
+      : SHOOTER_GENERATOR_PROMPT;
+
     const rawSpec = await runWithRetry<ShooterSpec>({
       client: this.client,
       model: this.model,
-      system: SHOOTER_GENERATOR_PROMPT,
+      system: systemPrompt,
       buildUserContent: (attempt, lastError, lastFailedJSON) => {
         let content = `Create a complete FPS shooter game for: "${prompt}"`;
         if (attempt > 0 && lastError) {

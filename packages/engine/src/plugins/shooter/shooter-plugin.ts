@@ -79,15 +79,21 @@ export class ShooterPlugin implements TemplatePlugin {
         const specs: Entity[] = [];
         for (const enemyId of wave.enemyIds) {
           const entSpec = this.allEnemyEntities.get(enemyId);
-          if (entSpec) specs.push(entSpec);
+          if (entSpec) {
+            specs.push(entSpec);
+          } else {
+            console.warn(`[ShooterPlugin] Wave ${wave.waveNumber} references unknown enemy "${enemyId}"`);
+          }
         }
         this.deferredEnemySpecs.set(wave.waveNumber, specs);
+        console.log(`[ShooterPlugin] Wave ${wave.waveNumber}: ${specs.length} deferred enemies [${specs.map(s => s.id).join(", ")}]`);
       }
 
       // Count wave 1 enemies
       const wave1 = this.spec.waveConfig.waves.find(w => w.waveNumber === 1);
       this.waveEnemiesAlive = wave1?.enemyIds.length ?? 0;
       this.waveActive = true;
+      console.log(`[ShooterPlugin] Wave system init — wave 1: ${this.waveEnemiesAlive} enemies, ${this.totalWaves} total waves`);
     }
 
     this.buildHUD();
@@ -210,6 +216,7 @@ export class ShooterPlugin implements TemplatePlugin {
     const wave = this.waveMap.get(ent.spec.id);
     if (wave !== undefined && wave === this.currentWave) {
       this.waveEnemiesAlive--;
+      console.log(`[ShooterPlugin] Enemy "${ent.spec.id}" destroyed (wave ${wave}). ${this.waveEnemiesAlive} remaining.`);
 
       // Loot drop
       const enemySpec = this.spec.enemies.find(e => e.id === ent.spec.id);
@@ -221,10 +228,16 @@ export class ShooterPlugin implements TemplatePlugin {
       if (this.waveEnemiesAlive <= 0 && this.waveActive) {
         this.waveActive = false;
         if (this.currentWave < this.totalWaves) {
+          const delay = this.spec.waveConfig?.timeBetweenWaves ?? 5;
+          console.log(`[ShooterPlugin] Wave ${this.currentWave} cleared! Next wave in ${delay}s`);
           this.api.showMessage(`Wave ${this.currentWave} cleared!`);
-          this.waveTimer = this.spec.waveConfig?.timeBetweenWaves ?? 5;
+          this.waveTimer = delay;
+        } else {
+          console.log(`[ShooterPlugin] All ${this.totalWaves} waves cleared!`);
         }
       }
+    } else if (wave !== undefined) {
+      console.warn(`[ShooterPlugin] Enemy "${ent.spec.id}" destroyed but wave mismatch: enemy wave=${wave}, current=${this.currentWave}`);
     }
   }
 
@@ -302,12 +315,17 @@ export class ShooterPlugin implements TemplatePlugin {
     this.api.hideMessage();
 
     const specs = this.deferredEnemySpecs.get(this.currentWave);
-    if (!specs || specs.length === 0) return;
+    if (!specs || specs.length === 0) {
+      console.warn(`[ShooterPlugin] No enemies found for wave ${this.currentWave}`);
+      return;
+    }
 
+    console.log(`[ShooterPlugin] Spawning wave ${this.currentWave}: ${specs.length} enemies`);
     this.api.showMessage(`Wave ${this.currentWave}!`);
     setTimeout(() => this.api.hideMessage(), 2000);
 
     for (const spec of specs) {
+      console.log(`  spawning "${spec.id}" at (${spec.transform.position.x.toFixed(1)}, ${spec.transform.position.y.toFixed(1)}, ${spec.transform.position.z.toFixed(1)}) asset=${spec.assetId ?? "NONE"}`);
       this.api.spawnEntity(spec, false);
     }
 
@@ -420,8 +438,8 @@ export class ShooterPlugin implements TemplatePlugin {
       this.hudContainer.appendChild(this.weaponNameEl);
     }
 
-    // Wave counter (top-center)
-    if (this.spec.ui.showWaveCounter && this.spec.waveConfig) {
+    // Wave counter (top-center) — always show when wave mode is active
+    if (this.spec.waveConfig) {
       this.waveEl = document.createElement("div");
       Object.assign(this.waveEl.style, {
         position: "absolute",
@@ -470,7 +488,14 @@ export class ShooterPlugin implements TemplatePlugin {
     }
 
     if (this.waveEl) {
-      this.waveEl.textContent = `Wave ${this.currentWave} / ${this.totalWaves}`;
+      const betweenWaves = !this.waveActive && this.waveTimer > 0;
+      if (betweenWaves) {
+        this.waveEl.textContent = `Next wave in ${Math.ceil(this.waveTimer)}s`;
+        this.waveEl.style.color = "#ffaa00";
+      } else {
+        this.waveEl.textContent = `Wave ${this.currentWave}/${this.totalWaves} — ${this.waveEnemiesAlive} enemies left`;
+        this.waveEl.style.color = "#00e5ff";
+      }
     }
 
     if (this.reloadEl) {

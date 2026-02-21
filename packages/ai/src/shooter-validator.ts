@@ -26,7 +26,10 @@ export function validateShooterSpec(spec: ShooterSpec): ShooterValidationIssue[]
   const halfX = spec.arena.size.x / 2;
   const halfZ = spec.arena.size.z / 2;
 
-  // Cross-reference checks
+  // When layoutTemplate is present, LayoutEngine handles spatial positioning
+  const hasLayout = !!spec.arena.layoutTemplate;
+
+  // Cross-reference checks (always run — semantic, not spatial)
   if (!weaponIds.has(spec.player.startingWeapon)) {
     issues.push({
       type: "invalid_starting_weapon",
@@ -57,38 +60,40 @@ export function validateShooterSpec(spec: ShooterSpec): ShooterValidationIssue[]
     }
   }
 
-  // Spatial checks
-  for (const enemy of spec.enemies) {
-    const pos = enemy.transform.position;
+  // Spatial checks — skip when LayoutEngine handles positioning
+  if (!hasLayout) {
+    for (const enemy of spec.enemies) {
+      const pos = enemy.transform.position;
 
-    // Enemies too close to player spawn
-    if (distXZ(pos, spawn) < 10) {
-      issues.push({
-        type: "enemy_near_spawn",
-        entityId: enemy.id,
-        description: `Enemy "${enemy.name}" (${enemy.id}) is ${distXZ(pos, spawn).toFixed(1)} units from player spawn — minimum is 10`,
-      });
+      // Enemies too close to player spawn
+      if (distXZ(pos, spawn) < 10) {
+        issues.push({
+          type: "enemy_near_spawn",
+          entityId: enemy.id,
+          description: `Enemy "${enemy.name}" (${enemy.id}) is ${distXZ(pos, spawn).toFixed(1)} units from player spawn — minimum is 10`,
+        });
+      }
+
+      // Out of bounds
+      if (Math.abs(pos.x) > halfX - 1 || Math.abs(pos.z) > halfZ - 1) {
+        issues.push({
+          type: "out_of_bounds",
+          entityId: enemy.id,
+          description: `Enemy "${enemy.name}" (${enemy.id}) at (${pos.x}, ${pos.z}) is outside arena bounds`,
+        });
+      }
     }
 
-    // Out of bounds
-    if (Math.abs(pos.x) > halfX - 1 || Math.abs(pos.z) > halfZ - 1) {
-      issues.push({
-        type: "out_of_bounds",
-        entityId: enemy.id,
-        description: `Enemy "${enemy.name}" (${enemy.id}) at (${pos.x}, ${pos.z}) is outside arena bounds`,
-      });
-    }
-  }
-
-  // Pickup bounds
-  for (const pickup of spec.pickups) {
-    const pos = pickup.position;
-    if (Math.abs(pos.x) > halfX - 1 || Math.abs(pos.z) > halfZ - 1) {
-      issues.push({
-        type: "pickup_out_of_bounds",
-        entityId: pickup.id,
-        description: `Pickup "${pickup.id}" at (${pos.x}, ${pos.z}) is outside arena bounds`,
-      });
+    // Pickup bounds
+    for (const pickup of spec.pickups) {
+      const pos = pickup.position;
+      if (Math.abs(pos.x) > halfX - 1 || Math.abs(pos.z) > halfZ - 1) {
+        issues.push({
+          type: "pickup_out_of_bounds",
+          entityId: pickup.id,
+          description: `Pickup "${pickup.id}" at (${pos.x}, ${pos.z}) is outside arena bounds`,
+        });
+      }
     }
   }
 

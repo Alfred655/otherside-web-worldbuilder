@@ -34,10 +34,16 @@ export interface PipelineResult {
 export class GenerationPipeline {
   private client: Anthropic;
   private model: string;
+  private assetSummary: string = "";
 
   constructor(apiKey: string, options: PipelineOptions = {}) {
     this.client = new Anthropic({ apiKey });
     this.model = options.model ?? "claude-sonnet-4-6";
+  }
+
+  /** Provide the asset catalog summary so generated specs reference real 3D models */
+  setAssetSummary(summary: string) {
+    this.assetSummary = summary;
   }
 
   async generate(
@@ -93,11 +99,15 @@ export class GenerationPipeline {
         userContent += `\n\nGuidance: Reduce entity count if needed. Use primitive meshes for collectibles and props. Ensure all JSON is valid.`;
       }
 
+      const systemPrompt = this.assetSummary
+        ? `${GENERATOR_SYSTEM_PROMPT}\n\n${this.assetSummary}`
+        : GENERATOR_SYSTEM_PROMPT;
+
       const response = await this.client.messages
         .stream({
           model: this.model,
           max_tokens: 32768,
-          system: GENERATOR_SYSTEM_PROMPT,
+          system: systemPrompt,
           messages: [{ role: "user", content: userContent }],
         })
         .finalMessage();

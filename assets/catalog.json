@@ -4,11 +4,337 @@
     "description": "Asset catalog for Otherside Web Worldbuilder. The AI reads this to know which 3D models are available when generating game specs."
   },
   "assets": {
-    "enemies": {},
-    "weapons": {},
-    "cover": {},
-    "pickups": {},
-    "environment": {},
-    "props": {}
+    "enemies": {
+      "kenney_soldier": {
+        "id": "kenney_soldier",
+        "file": "models/characters/character-soldier.glb",
+        "name": "Soldier",
+        "tags": ["enemy", "soldier", "humanoid", "guard", "npc"],
+        "category": "enemies",
+        "defaultScale": 1.0,
+        "colliderType": "capsule",
+        "dimensions": { "width": 0.6, "height": 1.5, "depth": 0.6 }
+      },
+      "kenney_enemy_flying": {
+        "id": "kenney_enemy_flying",
+        "file": "models/characters/enemy-flying.glb",
+        "name": "Flying Enemy",
+        "tags": ["enemy", "flying", "drone", "alien", "robot"],
+        "category": "enemies",
+        "defaultScale": 1.0,
+        "colliderType": "sphere",
+        "dimensions": { "width": 1.5, "height": 1.5, "depth": 1.5 }
+      }
+    },
+    "weapons": {
+      "kenney_blaster": {
+        "id": "kenney_blaster",
+        "file": "models/weapons/blaster.glb",
+        "name": "Blaster",
+        "tags": ["weapon", "gun", "pistol", "blaster", "sci-fi"],
+        "category": "weapons",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.3, "height": 0.2, "depth": 0.5 }
+      },
+      "kenney_blaster_repeater": {
+        "id": "kenney_blaster_repeater",
+        "file": "models/weapons/blaster-repeater.glb",
+        "name": "Repeater Blaster",
+        "tags": ["weapon", "gun", "rifle", "blaster", "automatic", "sci-fi"],
+        "category": "weapons",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.3, "height": 0.25, "depth": 0.8 }
+      },
+      "kenney_sword": {
+        "id": "kenney_sword",
+        "file": "models/weapons/weapon-sword.glb",
+        "name": "Sword",
+        "tags": ["weapon", "melee", "sword", "medieval", "fantasy"],
+        "category": "weapons",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.15, "height": 0.1, "depth": 1.0 }
+      },
+      "kenney_spear": {
+        "id": "kenney_spear",
+        "file": "models/weapons/weapon-spear.glb",
+        "name": "Spear",
+        "tags": ["weapon", "melee", "spear", "medieval", "fantasy"],
+        "category": "weapons",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.1, "height": 0.1, "depth": 1.5 }
+      },
+      "kenney_weapon_rack": {
+        "id": "kenney_weapon_rack",
+        "file": "models/weapons/weapon-rack.glb",
+        "name": "Weapon Rack",
+        "tags": ["weapon", "rack", "storage", "furniture", "medieval"],
+        "category": "weapons",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 1.0, "height": 1.5, "depth": 0.4 }
+      }
+    },
+    "cover": {
+      "kenney_block": {
+        "id": "kenney_block",
+        "file": "models/props/block.glb",
+        "name": "Block",
+        "tags": ["cover", "block", "crate", "box", "barrier"],
+        "category": "cover",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 1.0, "height": 1.0, "depth": 1.0 }
+      },
+      "kenney_bricks": {
+        "id": "kenney_bricks",
+        "file": "models/props/bricks.glb",
+        "name": "Brick Wall",
+        "tags": ["cover", "brick", "wall", "barrier", "low"],
+        "category": "cover",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 1.0, "height": 0.5, "depth": 1.0 }
+      },
+      "kenney_column": {
+        "id": "kenney_column",
+        "file": "models/props/column.glb",
+        "name": "Column",
+        "tags": ["cover", "column", "pillar", "stone", "vertical"],
+        "category": "cover",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.5, "height": 2.0, "depth": 0.5 }
+      },
+      "kenney_column_damaged": {
+        "id": "kenney_column_damaged",
+        "file": "models/props/column-damaged.glb",
+        "name": "Damaged Column",
+        "tags": ["cover", "column", "pillar", "stone", "damaged", "ruined"],
+        "category": "cover",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.5, "height": 1.2, "depth": 0.5 }
+      },
+      "kenney_wall_low": {
+        "id": "kenney_wall_low",
+        "file": "models/environment/wall-low.glb",
+        "name": "Low Wall",
+        "tags": ["cover", "wall", "low", "barrier", "half-wall"],
+        "category": "cover",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 1.0, "depth": 0.5 }
+      }
+    },
+    "pickups": {
+      "kenney_trophy": {
+        "id": "kenney_trophy",
+        "file": "models/props/trophy.glb",
+        "name": "Trophy",
+        "tags": ["pickup", "trophy", "collectible", "gold", "reward"],
+        "category": "pickups",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.3, "height": 0.5, "depth": 0.3 }
+      }
+    },
+    "environment": {
+      "kenney_floor": {
+        "id": "kenney_floor",
+        "file": "models/environment/floor.glb",
+        "name": "Floor Tile",
+        "tags": ["environment", "floor", "ground", "tile", "stone"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 0.1, "depth": 2.0 }
+      },
+      "kenney_floor_detail": {
+        "id": "kenney_floor_detail",
+        "file": "models/environment/floor-detail.glb",
+        "name": "Floor Tile (Detail)",
+        "tags": ["environment", "floor", "ground", "tile", "stone", "decorative"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 0.1, "depth": 2.0 }
+      },
+      "kenney_wall": {
+        "id": "kenney_wall",
+        "file": "models/environment/wall.glb",
+        "name": "Wall",
+        "tags": ["environment", "wall", "stone", "barrier"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 2.0, "depth": 0.4 }
+      },
+      "kenney_wall_corner": {
+        "id": "kenney_wall_corner",
+        "file": "models/environment/wall-corner.glb",
+        "name": "Wall Corner",
+        "tags": ["environment", "wall", "corner", "stone"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 2.0, "depth": 2.0 }
+      },
+      "kenney_wall_gate": {
+        "id": "kenney_wall_gate",
+        "file": "models/environment/wall-gate.glb",
+        "name": "Wall with Gate",
+        "tags": ["environment", "wall", "gate", "door", "archway", "stone"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 2.0, "depth": 0.4 }
+      },
+      "kenney_wall_high": {
+        "id": "kenney_wall_high",
+        "file": "models/environment/wall-high.glb",
+        "name": "High Wall",
+        "tags": ["environment", "wall", "high", "tall", "barrier"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 1.7, "depth": 0.5 }
+      },
+      "kenney_border_straight": {
+        "id": "kenney_border_straight",
+        "file": "models/environment/border-straight.glb",
+        "name": "Border (Straight)",
+        "tags": ["environment", "border", "edge", "ledge", "trim"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 0.3, "depth": 0.3 }
+      },
+      "kenney_border_corner": {
+        "id": "kenney_border_corner",
+        "file": "models/environment/border-corner.glb",
+        "name": "Border (Corner)",
+        "tags": ["environment", "border", "edge", "corner", "trim"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.3, "height": 0.3, "depth": 0.3 }
+      },
+      "kenney_stairs": {
+        "id": "kenney_stairs",
+        "file": "models/environment/stairs.glb",
+        "name": "Stairs",
+        "tags": ["environment", "stairs", "steps", "ramp"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 2.0, "depth": 2.0 }
+      },
+      "kenney_stairs_corner": {
+        "id": "kenney_stairs_corner",
+        "file": "models/environment/stairs-corner.glb",
+        "name": "Stairs (Corner)",
+        "tags": ["environment", "stairs", "steps", "corner"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 2.0, "depth": 2.0 }
+      },
+      "kenney_stairs_corner_inner": {
+        "id": "kenney_stairs_corner_inner",
+        "file": "models/environment/stairs-corner-inner.glb",
+        "name": "Stairs (Inner Corner)",
+        "tags": ["environment", "stairs", "steps", "corner", "inner"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 2.0, "depth": 2.0 }
+      },
+      "kenney_platform": {
+        "id": "kenney_platform",
+        "file": "models/environment/platform.glb",
+        "name": "Platform",
+        "tags": ["environment", "platform", "floor", "floating"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 2.0, "height": 0.5, "depth": 1.6 }
+      },
+      "kenney_platform_grass": {
+        "id": "kenney_platform_grass",
+        "file": "models/environment/platform-large-grass.glb",
+        "name": "Large Grass Platform",
+        "tags": ["environment", "platform", "grass", "ground", "large"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 4.0, "height": 0.5, "depth": 4.0 }
+      },
+      "kenney_cloud": {
+        "id": "kenney_cloud",
+        "file": "models/environment/cloud.glb",
+        "name": "Cloud",
+        "tags": ["environment", "cloud", "sky", "decoration", "floating"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 3.0, "height": 1.0, "depth": 2.0 }
+      },
+      "kenney_grass": {
+        "id": "kenney_grass",
+        "file": "models/environment/grass.glb",
+        "name": "Grass Patch",
+        "tags": ["environment", "grass", "vegetation", "ground", "foliage"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.5, "height": 0.3, "depth": 0.5 }
+      },
+      "kenney_grass_small": {
+        "id": "kenney_grass_small",
+        "file": "models/environment/grass-small.glb",
+        "name": "Small Grass",
+        "tags": ["environment", "grass", "vegetation", "small", "foliage"],
+        "category": "environment",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.3, "height": 0.2, "depth": 0.3 }
+      }
+    },
+    "props": {
+      "kenney_banner": {
+        "id": "kenney_banner",
+        "file": "models/props/banner.glb",
+        "name": "Banner",
+        "tags": ["prop", "banner", "flag", "decoration", "medieval"],
+        "category": "props",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.6, "height": 2.0, "depth": 0.1 }
+      },
+      "kenney_statue": {
+        "id": "kenney_statue",
+        "file": "models/props/statue.glb",
+        "name": "Statue",
+        "tags": ["prop", "statue", "decoration", "stone", "monument"],
+        "category": "props",
+        "defaultScale": 1.0,
+        "colliderType": "box",
+        "dimensions": { "width": 0.8, "height": 2.0, "depth": 0.8 }
+      },
+      "kenney_tree": {
+        "id": "kenney_tree",
+        "file": "models/props/tree.glb",
+        "name": "Tree",
+        "tags": ["prop", "tree", "nature", "vegetation", "outdoor"],
+        "category": "props",
+        "defaultScale": 1.0,
+        "colliderType": "capsule",
+        "dimensions": { "width": 1.5, "height": 3.0, "depth": 1.5 }
+      }
+    }
   }
 }

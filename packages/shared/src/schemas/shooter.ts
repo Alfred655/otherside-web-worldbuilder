@@ -99,6 +99,30 @@ export const ShooterPickupSchema = z.discriminatedUnion("type", [
 ]);
 
 // ---------------------------------------------------------------------------
+// Layout system — zone-based level design
+// ---------------------------------------------------------------------------
+
+export const LayoutTemplateEnum = z.enum([
+  "warehouse", "courtyard", "corridors", "rooftop", "bunker",
+]);
+
+export const ZoneTypeEnum = z.enum([
+  "cover_heavy", "cover_light", "open_combat",
+  "supply_cache", "sniper_perch", "landmark", "spawn_area",
+]);
+
+export const ZoneRegionEnum = z.enum([
+  "north", "south", "east", "west",
+  "northeast", "northwest", "southeast", "southwest", "center",
+]);
+
+export const ArenaZoneSchema = z.object({
+  type: ZoneTypeEnum,
+  region: ZoneRegionEnum,
+  description: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Arena
 // ---------------------------------------------------------------------------
 
@@ -119,6 +143,9 @@ export const ArenaSchema = z.object({
   floorMaterial: MaterialSchema,
   wallMaterial: MaterialSchema,
   coverObjects: z.array(CoverObjectSchema).default([]),
+  layoutTemplate: LayoutTemplateEnum.optional(),
+  theme: z.string().optional(),
+  zones: z.array(ArenaZoneSchema).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -206,3 +233,7 @@ export type ShooterPlayerConfig = z.infer<typeof ShooterPlayerConfigSchema>;
 export type ShooterRules = z.infer<typeof ShooterRulesSchema>;
 export type ShooterUI = z.infer<typeof ShooterUISchema>;
 export type ShooterSpec = z.infer<typeof ShooterSpecSchema>;
+export type LayoutTemplate = z.infer<typeof LayoutTemplateEnum>;
+export type ZoneType = z.infer<typeof ZoneTypeEnum>;
+export type ZoneRegion = z.infer<typeof ZoneRegionEnum>;
+export type ArenaZone = z.infer<typeof ArenaZoneSchema>;

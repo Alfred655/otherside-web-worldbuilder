@@ -1,11 +1,13 @@
 import dotenv from "dotenv";
 import path from "path";
+import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 // pnpm runs from packages/server/, so .env is two levels up at repo root
 dotenv.config({ path: "../../.env" });
 
 import express from "express";
 import { GameGenerator, SpecRefiner } from "@otherside/ai";
+import { generateAssetSummaryForAI } from "@otherside/shared";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -22,6 +24,20 @@ if (!apiKey || apiKey === "your-api-key-here") {
 
 const generator = new GameGenerator(apiKey ?? "");
 const refiner = new SpecRefiner(apiKey ?? "");
+
+// Load asset catalog and inject summary into AI generator
+const catalogPath = path.resolve(__dirname, "../../../assets/catalog.json");
+try {
+  const catalog = JSON.parse(readFileSync(catalogPath, "utf-8"));
+  const summary = generateAssetSummaryForAI(catalog);
+  generator.setAssetSummary(summary);
+  const assetCount = Object.values(catalog.assets ?? {}).reduce(
+    (sum: number, cat: any) => sum + Object.keys(cat).length, 0,
+  );
+  console.log(`[assets] Loaded catalog with ${assetCount} assets`);
+} catch (err) {
+  console.warn("[assets] Could not load asset catalog:", err instanceof Error ? err.message : err);
+}
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });

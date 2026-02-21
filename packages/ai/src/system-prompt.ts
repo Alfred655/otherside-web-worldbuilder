@@ -45,7 +45,8 @@ When type is "procedural" and biome is set, the engine generates terrain with Pe
   "material": { "color": "#rrggbb", "roughness": 0–1, "metalness": 0–1, "proceduralTexture": "wood"|"stone"|"metal"|"fabric" | omit },
   "physics": Physics | omit,
   "behaviors": Behavior[],
-  "health": positive number | omit
+  "health": positive number | omit,
+  "assetId": string | omit      // reference to asset catalog — if set, engine loads a 3D model instead of primitive mesh
 }
 
 NOTE: Entity type must NOT be "player" — player is configured separately.
@@ -214,6 +215,13 @@ IMPORTANT CONSTRAINTS:
 - Reserve compound meshes for 3-4 key NPCs. Use primitive meshes for collectibles and props.
 - Do NOT create individual wall/floor/ceiling entities — the terrain handles the ground.
 - Props (pillars, crates, etc.) are optional decoration. Keep props to 4 or fewer.
+
+ASSET SYSTEM:
+- An asset catalog of 3D models may be provided below. When a matching asset exists, set "assetId" on the entity to reference it.
+- When assetId is set, the engine loads a real 3D model. The mesh and material fields are still required as fallback but the 3D model takes visual priority.
+- When assetId is set, always use scale {"x":1,"y":1,"z":1} and position.y = 0 — the 3D model is already correctly sized and has its origin at the base (ground level).
+- PREFER using assets over primitive shapes whenever a suitable match exists.
+- If no matching asset is found, omit assetId and the engine will use the primitive mesh as usual.
 
 Output ONLY valid JSON — no markdown, no code fences, no commentary.
 

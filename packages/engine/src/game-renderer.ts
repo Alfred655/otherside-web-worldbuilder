@@ -15,6 +15,9 @@ import { HUD } from "./hud.js";
 import type { TemplatePlugin, GameRendererAPI, RaycastHit } from "./plugins/template-plugin.js";
 import { DefaultPlugin } from "./plugins/default-plugin.js";
 import type { AssetLoader } from "./asset-loader.js";
+import { WorldBuilder } from "./world-builder.js";
+import type { WorldBuilderResult } from "./world-builder.js";
+import type { Arena } from "@otherside/shared";
 import {
   buildProceduralSky,
   buildProceduralTerrain,
@@ -93,6 +96,10 @@ export class GameRenderer {
   // Asset system
   private assetLoader: AssetLoader | null = null;
 
+  // World builder (tiled arena environment)
+  private arena: Arena | null = null;
+  private worldBuilderResult: WorldBuilderResult | null = null;
+
   constructor(private spec: GameSpec) {}
 
   /** Attach a template plugin (call before init) */
@@ -103,6 +110,11 @@ export class GameRenderer {
   /** Attach an asset loader for GLTF model support (call before init) */
   setAssetLoader(loader: AssetLoader) {
     this.assetLoader = loader;
+  }
+
+  /** Attach arena config for tiled WorldBuilder rendering (call before init) */
+  setArena(arena: Arena) {
+    this.arena = arena;
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────
@@ -125,14 +137,19 @@ export class GameRenderer {
       );
     }
 
-    // lights
+    // lights — enforce minimum ambient so arenas are never pitch-black
+    const ambientIntensity = Math.max(this.spec.world.ambientLightIntensity, 0.4);
     const ambient = new THREE.AmbientLight(
       this.spec.world.ambientLightColor,
-      this.spec.world.ambientLightIntensity,
+      ambientIntensity,
     );
     this.scene.add(ambient);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    // Hemisphere light for natural fill (sky color + ground bounce)
+    const hemi = new THREE.HemisphereLight(0xddeeff, 0x665544, 0.5);
+    this.scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
     sun.position.set(10, 20, 10);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -171,7 +188,17 @@ export class GameRenderer {
     this.world = new RAPIER.World(this.spec.world.gravity);
     this.eventQueue = new RAPIER.EventQueue(true);
 
-    this.buildTerrain();
+    // Build environment: tiled arena (WorldBuilder) or procedural/flat terrain
+    if (this.arena && this.arena.shape === "rectangle" && this.assetLoader) {
+      this.worldBuilderResult = WorldBuilder.build(
+        this.arena,
+        this.scene,
+        this.world,
+        this.assetLoader,
+      );
+    } else {
+      this.buildTerrain();
+    }
 
     for (const entSpec of this.spec.entities) {
       const ent = this.spawnEntity(entSpec, false);
@@ -257,6 +284,32 @@ export class GameRenderer {
 
     this.syncTransforms();
 
+    // NPC bobbing + facing direction
+    for (const ent of this.entities) {
+      if (!ent.active || ent.spec.type !== "npc" || !ent.body) continue;
+      const curPos = ent.object3d.position;
+      let lastPos = this.lastEntityPositions.get(ent.spec.id);
+      if (!lastPos) {
+        lastPos = curPos.clone();
+        this.lastEntityPositions.set(ent.spec.id, lastPos);
+      }
+      const dx = curPos.x - lastPos.x;
+      const dz = curPos.z - lastPos.z;
+      const isMoving = (dx * dx + dz * dz) > 0.0001;
+
+      // Bobbing: subtle vertical oscillation while moving
+      if (isMoving) {
+        curPos.y += Math.sin(ent.age * 8) * 0.04;
+      }
+
+      // Face movement direction
+      if (isMoving) {
+        ent.object3d.rotation.y = Math.atan2(dx, dz);
+      }
+
+      lastPos.copy(ent.object3d.position);
+    }
+
     // Animate procedural sky (cloud movement)
     this.sky?.update(frameDt);
 
@@ -269,9 +322,9 @@ export class GameRenderer {
       const curPos = ent.object3d.position;
       let isMoving = false;
       if (lastPos) {
-        const dx = curPos.x - lastPos.x;
-        const dz = curPos.z - lastPos.z;
-        isMoving = (dx * dx + dz * dz) > 0.0001;
+        const ddx = curPos.x - lastPos.x;
+        const ddz = curPos.z - lastPos.z;
+        isMoving = (ddx * ddx + ddz * ddz) > 0.0001;
         lastPos.copy(curPos);
       }
       anim.update(frameDt, isMoving);
@@ -404,23 +457,61 @@ export class GameRenderer {
     let object3d: THREE.Object3D;
     let materials: THREE.MeshStandardMaterial[];
 
+    // Log NPC spawns for debugging
+    if (entSpec.type === "npc") {
+      const p = transform.position;
+      console.log(
+        `[SpawnEntity] NPC "${entSpec.id}" at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}) ` +
+        `asset=${entSpec.assetId ?? "NONE"} hp=${entSpec.health ?? 0}`,
+      );
+
+      // Validate position: clamp to arena bounds if set
+      if (this.arena) {
+        const halfX = this.arena.size.x / 2 - 1;
+        const halfZ = this.arena.size.z / 2 - 1;
+        let clamped = false;
+        if (Math.abs(p.x) > halfX) { p.x = Math.sign(p.x) * halfX; clamped = true; }
+        if (Math.abs(p.z) > halfZ) { p.z = Math.sign(p.z) * halfZ; clamped = true; }
+        if (p.y < 0 || p.y > 5) { p.y = 0; clamped = true; }
+        if (clamped) {
+          console.warn(`  → clamped to (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`);
+        }
+      }
+    }
+
     // Try to use a 3D asset model if assetId is present and preloaded
     const assetModel = entSpec.assetId && this.assetLoader
       ? this.assetLoader.getModelSync(entSpec.assetId)
       : null;
 
     if (assetModel) {
-      // GLTF model from asset catalog
-      assetModel.position.set(transform.position.x, transform.position.y, transform.position.z);
+      // GLTF model from asset catalog — already correctly sized via catalog defaultScale.
+      // GLTF models have their origin at the base (y=0), unlike primitives whose origin
+      // is at center. Place the model so its base sits at ground level (y=0).
+      assetModel.position.set(transform.position.x, 0, transform.position.z);
       assetModel.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
-      assetModel.scale.set(
-        assetModel.scale.x * scale.x,
-        assetModel.scale.y * scale.y,
-        assetModel.scale.z * scale.z,
-      );
+
+      // Auto-scale NPC models if they're too small to see
+      if (entSpec.type === "npc") {
+        const bbox = new THREE.Box3().setFromObject(assetModel);
+        const modelHeight = bbox.max.y - bbox.min.y;
+        if (modelHeight > 0 && modelHeight < 1.0) {
+          const targetH = 1.5;
+          const sf = targetH / modelHeight;
+          assetModel.scale.multiplyScalar(sf);
+        }
+      }
+
       this.scene.add(assetModel);
       object3d = assetModel;
       materials = collectMaterials(assetModel);
+    } else if (entSpec.type === "npc" && !assetModel) {
+      // NPC without asset: build a visible humanoid shape (not a tiny box)
+      const group = this.buildEnemyFallback(entSpec);
+      group.position.set(transform.position.x, 0, transform.position.z);
+      this.scene.add(group);
+      object3d = group;
+      materials = collectMaterials(group);
     } else if (meshSpec.kind === "compound") {
       // Compound mesh — group of parts
       const group = buildCompoundMesh(meshSpec.parts, matSpec.color);
@@ -470,12 +561,14 @@ export class GameRenderer {
       }
     }
 
-    // health
+    // health bar — position above model's actual top
     const hp = entSpec.health ?? 0;
     let healthBar: HealthBar | null = null;
     if (hp > 0 && entSpec.type === "npc") {
       healthBar = new HealthBar();
-      healthBar.group.position.set(0, 1.5, 0);
+      const bbox = new THREE.Box3().setFromObject(object3d);
+      const modelTop = bbox.max.y - object3d.position.y;
+      healthBar.group.position.set(0, Math.max(modelTop + 0.3, 1.8), 0);
       object3d.add(healthBar.group);
     }
 
@@ -572,6 +665,53 @@ export class GameRenderer {
         }
       }
     }
+  }
+
+  // ── Enemy fallback model ──────────────────────────────────────────────
+  /** Build a visible humanoid shape from primitives for NPCs without asset models */
+  private buildEnemyFallback(entSpec: Entity): THREE.Group {
+    const group = new THREE.Group();
+    const name = (entSpec.name || "").toLowerCase();
+
+    // Color-code by enemy type
+    let color = 0xcc3333; // red — grunt
+    if (name.includes("heavy") || name.includes("tank")) color = 0xff8800;
+    else if (name.includes("sniper") || name.includes("ranged") || name.includes("scout")) color = 0x3366cc;
+    else if (name.includes("boss") || name.includes("elite")) color = 0x9933cc;
+
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.5,
+      metalness: 0.3,
+      emissive: color,
+      emissiveIntensity: 0.15,
+    });
+
+    // Body — tapered cylinder (1.4m tall, 0.25m radius top, 0.3m bottom)
+    const bodyGeo = new THREE.CylinderGeometry(0.2, 0.28, 1.3, 8);
+    const body = new THREE.Mesh(bodyGeo, mat);
+    body.position.y = 0.65;
+    body.castShadow = true;
+    group.add(body);
+
+    // Head — sphere (0.22m radius) on top of body
+    const headGeo = new THREE.SphereGeometry(0.22, 8, 6);
+    const head = new THREE.Mesh(headGeo, mat);
+    head.position.y = 1.52;
+    head.castShadow = true;
+    group.add(head);
+
+    // Eyes — two small dark spheres for visibility from a distance
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const eyeGeo = new THREE.SphereGeometry(0.04, 4, 4);
+    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    leftEye.position.set(-0.08, 1.55, 0.18);
+    group.add(leftEye);
+    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rightEye.position.set(0.08, 1.55, 0.18);
+    group.add(rightEye);
+
+    return group;
   }
 
   // ── Geometry / body / collider helpers ────────────────────────────────
@@ -814,10 +954,10 @@ export class GameRenderer {
 
   private flashEntity(ent: RuntimeEntity) {
     for (const mat of ent.materials) {
-      mat.emissive.set(0xff2222);
+      mat.emissive.set(0xffffff);
       mat.emissiveIntensity = 1.0;
     }
-    this.flashTimers.set(ent.spec.id, 0.2);
+    this.flashTimers.set(ent.spec.id, 0.15);
   }
 
   private restoreColor(ent: RuntimeEntity) {
@@ -1108,6 +1248,7 @@ export class GameRenderer {
     this.playerCtrl.dispose();
     this.hud.dispose();
     this.sky?.dispose();
+    this.worldBuilderResult?.dispose();
     this.terrainResult?.dispose();
     this.scatterResult?.dispose();
     for (const anim of this.characterAnimations.values()) anim.dispose();

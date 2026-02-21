@@ -33,7 +33,17 @@ export const SHOOTER_SCHEMA_DOCS = `## ShooterSpec Schema
   "wallHeight": positive (default 4),
   "floorMaterial": Material,
   "wallMaterial": Material,
-  "coverObjects": CoverObject[]  // default []
+  "coverObjects": CoverObject[],  // default [] — leave EMPTY when using layoutTemplate
+  "layoutTemplate": "warehouse"|"courtyard"|"corridors"|"rooftop"|"bunker" | omit,
+  "theme": string | omit,         // e.g. "dark warehouse", "medieval courtyard"
+  "zones": ArenaZone[] | omit     // zone descriptions for layout engine
+}
+
+### ArenaZone
+{
+  "type": "cover_heavy"|"cover_light"|"open_combat"|"supply_cache"|"sniper_perch"|"landmark"|"spawn_area",
+  "region": "north"|"south"|"east"|"west"|"center"|"northeast"|"northwest"|"southeast"|"southwest",
+  "description": string | omit
 }
 
 ### CoverObject
@@ -43,7 +53,8 @@ export const SHOOTER_SCHEMA_DOCS = `## ShooterSpec Schema
   "mesh": Mesh,
   "material": Material,
   "destructible": boolean (default false),
-  "health": positive | omit     // only if destructible
+  "health": positive | omit,    // only if destructible
+  "assetId": string | omit      // reference to asset catalog — if set, engine loads a 3D model instead of primitive mesh
 }
 
 ### Weapon
@@ -74,7 +85,8 @@ export const SHOOTER_SCHEMA_DOCS = `## ShooterSpec Schema
   "spawnWave": integer >= 1 | omit,
   "weapon": string | omit,       // weaponId for ranged enemies
   "accuracy": 0–1 (default 0.5),
-  "lootDrop": "health" | "ammo" | omit
+  "lootDrop": "health" | "ammo" | omit,
+  "assetId": string | omit      // reference to asset catalog — if set, engine loads a 3D model instead of primitive mesh
 }
 
 ### EnemyBehavior
@@ -160,18 +172,64 @@ CRITICAL RULES:
 - waveConfig.waves[].enemyIds MUST reference existing enemies[].id values
 - All entity positions must be within arena bounds (±size.x/2 for X, ±size.z/2 for Z)
 - Enemies must be at least 10 units (XZ distance) from player spawn
-- Entity Y = half their height above 0 (sitting on floor)
-- Cover objects should create sight lines and flanking opportunities
+- ALL enemies MUST have position.y = 0 and scale = {x:1, y:1, z:1}
+- ALL enemies MUST have "assetId": "kenney_soldier" (ground enemies) or "assetId": "kenney_enemy_flying" (flying/drone enemies). NEVER omit assetId on enemies.
+- ALL enemies MUST have mesh size {x:0.6, y:1.5, z:0.6} and collider "capsule" — this ensures the physics collider matches the 3D model.
 - Spread values: 0-0.03 = accurate, 0.04-0.08 = moderate, 0.1-0.2 = wide
 - Fire rates: pistol 2-4, rifle 6-10, shotgun 0.8-1.5
+- showWaveCounter MUST be true when mode is "waves" — players need to see wave progress
 
 CONSTRAINTS:
 - Maximum 12 enemies total across all waves
 - Maximum 3 weapons
 - Maximum 8 pickups
-- Maximum 6 cover objects
-- Use primitive meshes for enemies and cover — keep it simple
 - All colors: lowercase hex "#rrggbb"
+
+ASSET SYSTEM:
+- For ENEMIES: always use "assetId": "kenney_soldier" for humanoid/soldier enemies, "assetId": "kenney_enemy_flying" for flying/drone/alien enemies. This is critical for enemy visibility.
+- When assetId is set, always use scale {"x":1,"y":1,"z":1} and position.y = 0.
+
+ARENA CONSTRUCTION — the engine automatically builds the arena floor and walls using modular 3D tiles:
+- Do NOT create entities for floor or walls — the arena config handles them.
+
+LAYOUT SYSTEM — ALWAYS use template-based layouts:
+1. Pick a layoutTemplate:
+   - "warehouse": Indoor 3-lane arena (25-35m x 20-28m) with shelving rows, office, loading dock
+   - "courtyard": Open center (28-38m x 28-38m) with landmark, L-shaped building walls
+   - "corridors": Compact maze (24-32m x 24-32m) with hallways, rooms, central hub
+   - "rooftop": Open surface (28-36m x 22-30m) with HVAC units, water tower, low walls
+   - "bunker": Military base (26-34m x 22-30m) with sandbags, command area, supply room
+
+2. Set coverObjects to [] (empty array). The engine generates all cover from the template.
+
+3. Set theme to a short description (e.g. "dark warehouse", "medieval courtyard", "military bunker").
+
+4. Define 4-8 zones describing the arena:
+   Types: cover_heavy, cover_light, open_combat, supply_cache, sniper_perch, landmark, spawn_area
+   Regions: north, south, east, west, center, northeast, northwest, southeast, southwest
+
+5. Arena size MUST be within the template's recommended range. Use "rectangle" shape.
+
+6. For enemies: provide type, behavior, and wave info. Set position to {x:0, y:0, z:0}.
+   The engine places them at good zone positions automatically.
+
+7. For pickups: provide type and amount. Set position to {x:0, y:0, z:0}.
+   The engine places them in appropriate supply_cache zones.
+
+ZONE DESIGN PRINCIPLES:
+- Include at least one "spawn_area" zone (player starts here)
+- Include at least one "open_combat" zone
+- Mix cover_heavy and cover_light for variety
+- Place supply_cache zones away from spawn (exploration reward)
+- Use sniper_perch for guard enemies with long sight lines
+
+LIGHTING RULES — the arena must always be well-lit and visible:
+- ambientLightIntensity MUST be at least 0.5 for indoor/warehouse themes, at least 0.3 for outdoor.
+- ambientLightColor should be a warm or neutral tone, NEVER very dark (use "#ffffff" or "#ddccbb", NOT "#111111").
+- For indoor themes (warehouse, bunker, factory): ambientLightIntensity 0.5-0.7, warm ambientLightColor.
+- For outdoor themes (desert, forest, ruins): ambientLightIntensity 0.4-0.6, timeOfDay "morning" or "afternoon" for good light.
+- For dusk/night themes: ambientLightIntensity 0.3-0.4 but use warm fog color to add atmosphere.
+- skyColor should NEVER be "#000000". Use dark blue "#1a1a2e" for night, warm tones for day.
 
 Output ONLY valid JSON — no markdown, no code fences, no commentary.
 
@@ -180,17 +238,37 @@ ${SHOOTER_SCHEMA_DOCS}
 ## Example weapon:
 { "id": "pistol", "name": "Pistol", "type": "hitscan", "damage": 15, "fireRate": 3, "reloadTime": 1.5, "magSize": 12, "maxReserve": 60, "spread": 0.02, "range": 50 }
 
-## Example enemy:
+## Example enemy (with layout — placeholder position):
 { "id": "grunt-1", "name": "Grunt", "health": 40, "moveSpeed": 3, "accuracy": 0.5,
-  "transform": { "position": { "x": 12, "y": 1, "z": -8 }, "rotation": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
-  "mesh": { "kind": "primitive", "shape": "box", "size": { "x": 0.8, "y": 1.8, "z": 0.6 } },
+  "transform": { "position": { "x": 0, "y": 0, "z": 0 }, "rotation": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+  "mesh": { "kind": "primitive", "shape": "box", "size": { "x": 0.6, "y": 1.5, "z": 0.6 } },
   "material": { "color": "#884422", "roughness": 0.6, "metalness": 0.2 },
-  "physics": { "bodyType": "kinematic", "collider": "box" },
-  "behavior": { "aiType": "patrol", "patrolPath": [{ "x": 12, "y": 1, "z": -8 }, { "x": 12, "y": 1, "z": 5 }], "aggroRange": 15, "attackRange": 2 },
+  "physics": { "bodyType": "kinematic", "collider": "capsule" },
+  "behavior": { "aiType": "patrol", "aggroRange": 15, "attackRange": 2 },
+  "assetId": "kenney_soldier",
   "spawnWave": 1 }
 
-## Example pickup:
-{ "type": "ammo", "id": "ammo-1", "position": { "x": -10, "y": 0.5, "z": 0 }, "amount": 24, "weaponId": "pistol" }
+## Example arena with layout:
+"arena": {
+  "shape": "rectangle",
+  "size": { "x": 30, "y": 4, "z": 24 },
+  "wallHeight": 4,
+  "floorMaterial": { "color": "#555544", "roughness": 0.9, "metalness": 0 },
+  "wallMaterial": { "color": "#666655", "roughness": 0.8, "metalness": 0 },
+  "coverObjects": [],
+  "layoutTemplate": "warehouse",
+  "theme": "dark warehouse",
+  "zones": [
+    { "type": "spawn_area", "region": "southwest", "description": "Player entry point" },
+    { "type": "cover_heavy", "region": "northwest", "description": "Office area with heavy cover" },
+    { "type": "open_combat", "region": "center", "description": "Main combat area between lanes" },
+    { "type": "supply_cache", "region": "northeast", "description": "Loading dock with supplies" },
+    { "type": "cover_light", "region": "east", "description": "Side corridor with light cover" }
+  ]
+}
+
+## Example pickup (placeholder position):
+{ "type": "ammo", "id": "ammo-1", "position": { "x": 0, "y": 0, "z": 0 }, "amount": 24, "weaponId": "pistol" }
 
 Be creative with the theme. Make the game FUN and well-balanced.`;
 
@@ -212,4 +290,17 @@ Rules:
 - waveConfig.waves[].enemyIds must reference existing enemies[].id values.
 - For difficulty changes: adjust enemy health/speed/count, weapon damage, or ammo amounts.
 - Always return the FULL spec, not just changed parts.
-- All colors: exactly "#" + 6 lowercase hex digits. "template" must be "shooter".`;
+- All colors: exactly "#" + 6 lowercase hex digits. "template" must be "shooter".
+- For ENEMIES: always use "assetId": "kenney_soldier" for humanoid enemies, "assetId": "kenney_enemy_flying" for flying enemies.
+
+LAYOUT SYSTEM:
+- If the spec has a "layoutTemplate", PRESERVE it. Do NOT remove it or add coverObjects.
+- For layout changes (e.g. "add more cover", "make it more open"), modify the zones array instead.
+- To change arena style, you may change the layoutTemplate to a different template.
+- coverObjects MUST stay empty ([]) when layoutTemplate is set — the engine generates cover.
+- Enemies and pickups should keep placeholder positions {x:0,y:0,z:0} — the engine repositions them.
+
+LIGHTING RULES:
+- ambientLightIntensity MUST be at least 0.5 for indoor, 0.3 for outdoor.
+- ambientLightColor should be warm/neutral, NEVER very dark.
+- skyColor should NEVER be "#000000".`;

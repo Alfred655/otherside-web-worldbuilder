@@ -37,7 +37,7 @@ This is a **pnpm workspace monorepo** for a 3D game engine/worldbuilder that use
 
 ### Packages
 
-- **`packages/shared`** (`@otherside/shared`) — Zod schemas and inferred TypeScript types defining the `GameSpec` format. All game data (entities, behaviors, terrain, rules, player config) is validated through `schema.ts`. Sample game specs live in `sample-specs/`.
+- **`packages/shared`** (`@otherside/shared`) — Zod schemas and inferred TypeScript types defining the `GameSpec` format. All game data (entities, behaviors, terrain, rules, player config) is validated through `schema.ts`. Sample game specs live in `sample-specs/`. Also contains the **layout template system** (`layouts/`) with 5 predefined arena templates and type definitions.
 
 - **`packages/ai`** (`@otherside/ai`) — AI generation layer using the Anthropic SDK (`@anthropic-ai/sdk`). Contains a 2-step generation pipeline (merged generator + validator) and a spec refiner. Runs server-side only (API key never exposed to browser).
 
@@ -49,7 +49,7 @@ This is a **pnpm workspace monorepo** for a 3D game engine/worldbuilder that use
 
 The pipeline (`pipeline.ts`) runs 2 steps using `claude-sonnet-4-6`, with real-time progress via an `onProgress` callback:
 
-1. **Generator** (`max_tokens: 32768`, 3 retries, streamed) — Single merged LLM call that takes user prompt → valid `GameSpec` JSON directly. Combines creative design (theme, entities, behaviors) with technical building (schema compliance, physics rules) in one `GENERATOR_SYSTEM_PROMPT`. Matched against a template library (`templates.ts`) with 4 layout patterns: arena, corridor, open_world, platformer.
+1. **Generator** (`max_tokens: 32768`, 3 retries, streamed) — Single merged LLM call that takes user prompt → valid `GameSpec` JSON directly. Combines creative design (theme, entities, behaviors) with technical building (schema compliance, physics rules) in one `GENERATOR_SYSTEM_PROMPT`. Matched against a template library (`templates.ts`) with 4 layout patterns: arena, corridor, open_world, platformer. For shooter specs, the AI picks a `layoutTemplate` and defines zones instead of XYZ positions for cover — the browser-side LayoutEngine handles spatial placement.
 
 2. **Validator** — Runs programmatic checks (`validator.ts`): enemy spawn distance, out-of-bounds, patrol bounds, NPC/collectible overlaps, collectible clustering. `autoFixSpec()` fixes issues programmatically first. Only calls LLM (`claude-haiku-4-5-20251001` for speed) if programmatic fix leaves remaining issues.
 
@@ -65,7 +65,7 @@ Key design decisions:
 
 ### Engine Architecture
 
-The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `CreationUI` → user describes game → fetch `/api/generate` → `GameRenderer.init()` → `GameRenderer.start()`. Refinements hit `/api/refine`, dispose the old renderer, and create a new one with the updated spec.
+The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `CreationUI` → user describes game → fetch `/api/generate` → **LayoutEngine** (if template) → `shooterToGameSpec()` → `GameRenderer.init()` → `GameRenderer.start()`. Refinements hit `/api/refine`, dispose the old renderer, and create a new one with the updated spec. The LayoutEngine re-runs on every load, so the AI modifies zones, not positions.
 
 **`creation-ui.ts`** is the DOM-based creation/refinement interface. Shows a full-screen input overlay initially, then a chat bar at the bottom after game generation. Generation uses SSE streaming (`/api/generate` returns `text/event-stream`) to show real-time progress updates in the loading overlay. Refinement uses standard JSON fetch (`/api/refine`). Uses AbortController with 5-minute timeout on fetch calls.
 
@@ -91,6 +91,52 @@ The engine follows this runtime flow: `main.ts` → init Rapier WASM → show `C
 - `SpawnerBehaviorSchema` uses a non-recursive `SpawnTemplateSchema` (which only allows `BasicBehaviorSchema`, excluding spawner) to avoid circular references
 - `MeshSchema` is a discriminated union on `kind` (primitive vs model)
 - All types are inferred from Zod schemas (`z.infer<typeof ...>`)
+
+### Zone-Based Layout System
+
+Shooter arenas use a **template-driven layout system** instead of AI-generated XYZ positions for cover objects. The AI picks a `layoutTemplate` and describes `zones`; the browser-side `LayoutEngine` converts zones into concrete placements using proven FPS arena patterns.
+
+**Flow**: AI → `ShooterSpec` (template + zones, `coverObjects=[]`) → `LayoutEngine.build()` fills positions → `shooterToGameSpec()` → render
+
+**Schema additions** (`packages/shared/src/schemas/shooter.ts`):
+- `ArenaSchema` has optional fields: `layoutTemplate` (enum: warehouse, courtyard, corridors, rooftop, bunker), `theme` (string), `zones` (array of `ArenaZone`)
+- `ArenaZone` has `type` (cover_heavy, cover_light, open_combat, supply_cache, sniper_perch, landmark, spawn_area), `region` (compass directions + center), and optional `description`
+
+**Template definitions** (`packages/shared/src/layouts/`):
+- `types.ts` — `LayoutTemplateDef`, `CoverCluster`, `WallLine`, `EnemyHint`, `PickupHint` interfaces
+- 5 template files: `warehouse.ts`, `courtyard.ts`, `corridors.ts`, `rooftop.ts`, `bunker.ts`
+- `index.ts` — exports `LAYOUT_TEMPLATES` registry (maps template name → definition)
+
+**Coordinate system**: Cluster anchors use **normalized 0-1 coords** (scaled to arena size). Piece offsets within clusters use **absolute meters** (objects stay touching regardless of arena size). `toWorld(nx, nz)` converts: `x = (nx - 0.5) * arena.size.x`.
+
+**LayoutEngine** (`packages/engine/src/core/layout-engine.ts`):
+- `LayoutEngine.build()` returns `LayoutResult` with cover objects, wall entities, adjusted enemies/pickups, decorations, and player spawn
+- Cover generation: iterates template `coverClusters`, applies cluster rotation, converts to world coords, creates `CoverObject` per piece
+- Wall tiling: for each `WallLine`, computes world start/end, tiles wall segments along the line, skips gap positions (doorways)
+- Enemy placement: matches enemies to `EnemyHint` by AI type preference, tracks capacity, nudges if too close to spawn, regenerates patrol paths
+- Pickup placement: matches pickups to `PickupHint` by type preference
+- Density enforcement: total cover footprint capped at 30% of arena floor
+
+**Layout validator** (`packages/engine/src/core/layout-validator.ts`):
+- AABB overlap detection (auto-removes overlapping cover objects)
+- Flood fill reachability from spawn (warns if <70% reachable)
+- Quadrant density check (warns if any quadrant >60% coverage)
+
+**AI prompt changes** (`packages/ai/src/prompts/shooter-prompt.ts`):
+- Generator prompt instructs AI to always pick a `layoutTemplate`, set `coverObjects: []`, define 4-8 zones, use placeholder `{x:0,y:0,z:0}` positions for enemies/pickups
+- Refine prompt preserves `layoutTemplate`, modifies zones for layout changes
+
+**Validator bypass** (`packages/ai/src/shooter-validator.ts`):
+- When `spec.arena.layoutTemplate` is present, skips spatial checks (enemy_near_spawn, out_of_bounds, pickup_out_of_bounds) — LayoutEngine handles positioning
+- Cross-reference checks (weapon refs, wave refs, starting weapon) always run
+
+**Integration** (`packages/engine/src/main.ts`):
+- LayoutEngine runs BEFORE `shooterToGameSpec()` when `layoutTemplate` is present
+- Applies layout results back to spec (cover objects, adjusted enemies/pickups, player spawn)
+- Preloads layout-generated asset models before game starts
+- Injects wall entities and decorations into gameSpec after adapter conversion
+
+**Backward compatibility**: Specs without `layoutTemplate` work exactly as before — no LayoutEngine involvement.
 
 ### Cross-Package Dependencies
 

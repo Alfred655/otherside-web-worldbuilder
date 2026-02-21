@@ -105,7 +105,7 @@ export class AssetLoader {
     const assetIds = this.collectAssetIds(spec);
     if (assetIds.size === 0) return;
 
-    console.log(`[AssetLoader] Preloading ${assetIds.size} assets...`);
+    console.log(`[AssetLoader] Preloading ${assetIds.size} assets:`, Array.from(assetIds));
     const promises = Array.from(assetIds).map((id) => this.loadModel(id));
     await Promise.all(promises);
     console.log(`[AssetLoader] Preload complete`);
