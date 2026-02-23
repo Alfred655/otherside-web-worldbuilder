@@ -1,6 +1,7 @@
 export * from "./schema.js";
 export * from "./schemas/shooter.js";
 export * from "./asset-catalog.js";
+export * from "./asset-matching.js";
 export * from "./layouts/index.js";
 export { TEMPLATES } from "./templates/registry.js";
 export type { TemplateId, TemplateSpec } from "./templates/registry.js";

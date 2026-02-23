@@ -15,6 +15,7 @@ import type { LayoutTemplateDef, EnemyHint, PickupHint } from "@otherside/shared
 // ---------------------------------------------------------------------------
 
 const ASSET_DIMS: Record<string, { w: number; h: number; d: number }> = {
+  // Existing cover/environment
   kenney_block:          { w: 1,   h: 1,   d: 1   },
   kenney_bricks:         { w: 1,   h: 0.5, d: 1   },
   kenney_column:         { w: 0.5, h: 2,   d: 0.5 },
@@ -26,6 +27,34 @@ const ASSET_DIMS: Record<string, { w: number; h: number; d: number }> = {
   kenney_statue:         { w: 0.8, h: 2,   d: 0.8 },
   kenney_banner:         { w: 0.6, h: 2,   d: 0.1 },
   kenney_tree:           { w: 1.5, h: 3,   d: 1.5 },
+  // Blaster kit cover
+  crate_small:           { w: 0.5, h: 0.5, d: 0.5 },
+  crate_medium:          { w: 0.8, h: 0.8, d: 0.8 },
+  crate_wide:            { w: 1.5, h: 0.8, d: 0.8 },
+  // Car kit cover
+  car_kit_box:           { w: 1,   h: 1,   d: 1   },
+  traffic_cone:          { w: 0.3, h: 0.5, d: 0.3 },
+  traffic_cone_flat:     { w: 0.3, h: 0.3, d: 0.3 },
+  // Urban cover
+  dumpster_closed:       { w: 1.5, h: 1.2, d: 1   },
+  dumpster_open:         { w: 1.5, h: 1.2, d: 1   },
+  pallet:                { w: 1.2, h: 0.15, d: 1.2 },
+  pallet_small:          { w: 0.8, h: 0.15, d: 0.8 },
+  urban_block:           { w: 1,   h: 1,   d: 1   },
+  urban_barrier_strong_type_a: { w: 1.5, h: 1, d: 0.5 },
+  urban_barrier_strong_type_b: { w: 1.5, h: 1, d: 0.5 },
+  urban_barrier_strong_damaged: { w: 1.5, h: 0.8, d: 0.5 },
+  urban_barrier_type_a:  { w: 1.5, h: 0.8, d: 0.3 },
+  urban_barrier_type_b:  { w: 1.5, h: 0.8, d: 0.3 },
+  // Pirate cover
+  pirate_barrel:         { w: 0.5, h: 1,   d: 0.5 },
+  pirate_crate:          { w: 1,   h: 1,   d: 1   },
+  pirate_crate_bottles:  { w: 1,   h: 1,   d: 1   },
+  // Graveyard cover
+  hay_bale:              { w: 1,   h: 0.8, d: 1   },
+  hay_bale_bundled:      { w: 1,   h: 0.8, d: 1   },
+  coffin:                { w: 0.6, h: 0.5, d: 2   },
+  coffin_old:            { w: 0.6, h: 0.5, d: 2   },
 };
 
 // ---------------------------------------------------------------------------

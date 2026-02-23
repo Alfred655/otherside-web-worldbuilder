@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { AssetCatalog, AssetEntry } from "@otherside/shared";
+import { findBestAsset, detectTheme, mapEntityTypeToCategory } from "@otherside/shared";
 
 const CATALOG_URL = "/assets/catalog.json";
 const ASSETS_BASE = "/assets/";
@@ -109,6 +110,42 @@ export class AssetLoader {
     const promises = Array.from(assetIds).map((id) => this.loadModel(id));
     await Promise.all(promises);
     console.log(`[AssetLoader] Preload complete`);
+  }
+
+  /**
+   * Preload fallback assets for entities that are missing a valid assetId.
+   * Runs findBestAsset() to pick the best match and preloads it.
+   */
+  async preloadFallbacks(
+    entities: { name?: string; type?: string; assetId?: string }[],
+    themeText?: string,
+  ): Promise<void> {
+    if (!this.catalog) return;
+
+    const theme = themeText ? detectTheme(themeText) : null;
+    const toPreload = new Set<string>();
+
+    for (const ent of entities) {
+      // Skip entities that already have a valid assetId in the catalog
+      if (ent.assetId && this.getEntry(ent.assetId)) continue;
+
+      const category = mapEntityTypeToCategory(ent.type ?? "");
+      const desc = `${ent.name ?? ""} ${ent.type ?? ""}`.trim();
+      if (!desc) continue;
+
+      const match = findBestAsset(this.catalog, desc, category, theme);
+      if (match && match.score >= 1.0) {
+        toPreload.add(match.asset.id);
+        console.log(
+          `[Fallback] Matched "${desc}" → "${match.asset.id}" (score: ${match.score.toFixed(1)})`,
+        );
+      }
+    }
+
+    if (toPreload.size > 0) {
+      console.log(`[AssetLoader] Preloading ${toPreload.size} fallback assets`);
+      await Promise.all(Array.from(toPreload).map((id) => this.loadModel(id)));
+    }
   }
 
   /** Dispose all cached models */

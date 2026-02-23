@@ -320,14 +320,25 @@ export class ShooterPlugin implements TemplatePlugin {
       return;
     }
 
-    console.log(`[ShooterPlugin] Spawning wave ${this.currentWave}: ${specs.length} enemies`);
+    console.log(`[ShooterPlugin] ══════ Spawning wave ${this.currentWave}: ${specs.length} enemies ══════`);
     this.api.showMessage(`Wave ${this.currentWave}!`);
     setTimeout(() => this.api.hideMessage(), 2000);
 
+    let spawned = 0;
     for (const spec of specs) {
       console.log(`  spawning "${spec.id}" at (${spec.transform.position.x.toFixed(1)}, ${spec.transform.position.y.toFixed(1)}, ${spec.transform.position.z.toFixed(1)}) asset=${spec.assetId ?? "NONE"}`);
-      this.api.spawnEntity(spec, false);
+      const ent = this.api.spawnEntity(spec, false);
+      if (ent && ent.active && ent.object3d?.parent) {
+        spawned++;
+      } else {
+        console.error(`  → FAILED to spawn "${spec.id}": active=${ent?.active} inScene=${!!ent?.object3d?.parent}`);
+      }
     }
+
+    // Verify all enemies are in the scene
+    const allEntities = this.api.getEntities();
+    const waveNPCs = allEntities.filter(e => e.spec.type === "npc" && e.active);
+    console.log(`[ShooterPlugin] Wave ${this.currentWave} result: ${spawned}/${specs.length} spawned OK, ${waveNPCs.length} total active NPCs in scene`);
 
     this.waveEnemiesAlive = specs.length;
     this.waveActive = true;

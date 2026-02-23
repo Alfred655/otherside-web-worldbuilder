@@ -6,7 +6,9 @@ import type {
   Mesh as MeshSpec,
   Vec3,
   SpawnTemplate,
+  AssetCatalog,
 } from "@otherside/shared";
+import { findBestAsset, detectTheme, mapEntityTypeToCategory } from "@otherside/shared";
 import type { RuntimeEntity, SpawnRequest } from "./types.js";
 import { PlayerController } from "./player-controller.js";
 import { BehaviorManager } from "./behavior-manager.js";
@@ -95,6 +97,8 @@ export class GameRenderer {
 
   // Asset system
   private assetLoader: AssetLoader | null = null;
+  private catalog: AssetCatalog | null = null;
+  private currentTheme: string = "";
 
   // World builder (tiled arena environment)
   private arena: Arena | null = null;
@@ -115,6 +119,16 @@ export class GameRenderer {
   /** Attach arena config for tiled WorldBuilder rendering (call before init) */
   setArena(arena: Arena) {
     this.arena = arena;
+  }
+
+  /** Attach asset catalog for fallback matching (call before init) */
+  setCatalog(catalog: AssetCatalog) {
+    this.catalog = catalog;
+  }
+
+  /** Set the current theme for fallback asset matching (call before init) */
+  setTheme(theme: string) {
+    this.currentTheme = theme;
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────
@@ -453,19 +467,23 @@ export class GameRenderer {
   private spawnEntity(entSpec: Entity, spawned: boolean): RuntimeEntity {
     const { transform, mesh: meshSpec, material: matSpec, physics } = entSpec;
     const scale = transform.scale;
+    const isNPC = entSpec.type === "npc";
 
     let object3d: THREE.Object3D;
     let materials: THREE.MeshStandardMaterial[];
 
-    // Log NPC spawns for debugging
-    if (entSpec.type === "npc") {
+    // ── NPC pre-spawn logging & position enforcement ──
+    if (isNPC) {
       const p = transform.position;
+      const meshKind = meshSpec.kind;
+      const meshShape = meshSpec.kind === "primitive" ? meshSpec.shape : meshKind;
       console.log(
-        `[SpawnEntity] NPC "${entSpec.id}" at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}) ` +
+        `[SpawnEnemy] id="${entSpec.id}" pos=(${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)}) ` +
+        `scale=(${scale.x},${scale.y},${scale.z}) mesh=${meshShape} ` +
         `asset=${entSpec.assetId ?? "NONE"} hp=${entSpec.health ?? 0}`,
       );
 
-      // Validate position: clamp to arena bounds if set
+      // Clamp to arena bounds
       if (this.arena) {
         const halfX = this.arena.size.x / 2 - 1;
         const halfZ = this.arena.size.z / 2 - 1;
@@ -477,36 +495,57 @@ export class GameRenderer {
           console.warn(`  → clamped to (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`);
         }
       }
+
+      // Force scale to never be zero — AI sometimes emits scale 0
+      if (scale.x === 0 || scale.y === 0 || scale.z === 0) {
+        console.warn(`  → fixing zero scale on "${entSpec.id}"`);
+        transform.scale = { x: 1, y: 1, z: 1 };
+      }
     }
 
     // Try to use a 3D asset model if assetId is present and preloaded
-    const assetModel = entSpec.assetId && this.assetLoader
+    let assetModel = entSpec.assetId && this.assetLoader
       ? this.assetLoader.getModelSync(entSpec.assetId)
       : null;
 
+    // Fallback: if no asset model yet, try semantic matching
+    if (!assetModel && this.assetLoader && this.catalog) {
+      const category = mapEntityTypeToCategory(entSpec.type);
+      const desc = `${entSpec.name} ${entSpec.type}`;
+      const theme = this.currentTheme ? detectTheme(this.currentTheme) : null;
+      const match = findBestAsset(this.catalog, desc, category, theme);
+      if (match && match.score >= 1.0) {
+        assetModel = this.assetLoader.getModelSync(match.asset.id);
+        if (assetModel) {
+          console.log(
+            `[Fallback] Entity "${entSpec.id}" → asset "${match.asset.id}" (score: ${match.score.toFixed(1)})`,
+          );
+        }
+      }
+    }
+
+    try {
     if (assetModel) {
-      // GLTF model from asset catalog — already correctly sized via catalog defaultScale.
-      // GLTF models have their origin at the base (y=0), unlike primitives whose origin
-      // is at center. Place the model so its base sits at ground level (y=0).
+      // GLTF model from asset catalog — GLTF origins are at base (y=0).
       assetModel.position.set(transform.position.x, 0, transform.position.z);
       assetModel.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
 
-      // Auto-scale NPC models if they're too small to see
-      if (entSpec.type === "npc") {
+      // Enforce minimum 1.8m tall for NPC models
+      if (isNPC) {
         const bbox = new THREE.Box3().setFromObject(assetModel);
         const modelHeight = bbox.max.y - bbox.min.y;
-        if (modelHeight > 0 && modelHeight < 1.0) {
-          const targetH = 1.5;
-          const sf = targetH / modelHeight;
+        if (modelHeight > 0 && modelHeight < 1.8) {
+          const sf = 1.8 / modelHeight;
           assetModel.scale.multiplyScalar(sf);
+          console.log(`  → scaled NPC "${entSpec.id}" from ${modelHeight.toFixed(2)}m to 1.8m (×${sf.toFixed(2)})`);
         }
       }
 
       this.scene.add(assetModel);
       object3d = assetModel;
       materials = collectMaterials(assetModel);
-    } else if (entSpec.type === "npc" && !assetModel) {
-      // NPC without asset: build a visible humanoid shape (not a tiny box)
+    } else if (isNPC) {
+      // NPC without asset: build a visible humanoid capsule
       const group = this.buildEnemyFallback(entSpec);
       group.position.set(transform.position.x, 0, transform.position.z);
       this.scene.add(group);
@@ -532,7 +571,7 @@ export class GameRenderer {
       }
     } else {
       // Primitive or model mesh — single mesh
-      const geo = this.makeGeometry(meshSpec, scale);
+      const geo = this.makeGeometry(meshSpec, transform.scale);
       const mat = this.buildMaterial(matSpec);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(transform.position.x, transform.position.y, transform.position.z);
@@ -543,6 +582,65 @@ export class GameRenderer {
       object3d = mesh;
       materials = [mat];
     }
+    } catch (err) {
+      // ── FAILSAFE: if anything above threw, create a bright red capsule ──
+      console.error(`[SpawnEntity] FAILED for "${entSpec.id}":`, err);
+      const failsafe = this.buildFailsafeCapsule(entSpec);
+      this.scene.add(failsafe.group);
+      object3d = failsafe.group;
+      materials = [failsafe.material];
+    }
+
+    // ── NPC post-spawn enforcement ────────────────────────────────────
+    if (isNPC) {
+      // 1. Ensure minimum height of 1.8m
+      const bbox = new THREE.Box3().setFromObject(object3d);
+      const meshHeight = bbox.max.y - bbox.min.y;
+      if (meshHeight < 1.8 && meshHeight > 0) {
+        const sf = 1.8 / meshHeight;
+        object3d.scale.multiplyScalar(sf);
+        console.log(`  → post-enforce: scaled "${entSpec.id}" to 1.8m (was ${meshHeight.toFixed(2)}m)`);
+      }
+
+      // 2. Force Y so model stands on the floor (base at y=0)
+      const bbox2 = new THREE.Box3().setFromObject(object3d);
+      const baseY = bbox2.min.y;
+      if (Math.abs(baseY) > 0.1) {
+        object3d.position.y -= baseY; // shift so bottom touches y=0
+        console.log(`  → post-enforce: adjusted Y for "${entSpec.id}" (baseY was ${baseY.toFixed(2)})`);
+      }
+
+      // 3. Force material opacity=1.0, transparent=false, add emissive glow
+      const enemyColor = this.getEnemyGlowColor(entSpec.name);
+      for (const mat of materials) {
+        mat.opacity = 1.0;
+        mat.transparent = false;
+        mat.depthWrite = true;
+        mat.visible = true;
+        // Add bright emissive glow so enemies are impossible to miss
+        mat.emissive.set(enemyColor);
+        mat.emissiveIntensity = 0.25;
+      }
+
+      // 4. Force visible
+      object3d.visible = true;
+      object3d.traverse((child) => { child.visible = true; });
+
+      // 5. Verify in scene
+      if (!object3d.parent) {
+        console.error(`  → CRITICAL: "${entSpec.id}" NOT in scene! Force-adding.`);
+        this.scene.add(object3d);
+      }
+
+      // 6. Final debug log
+      const finalBBox = new THREE.Box3().setFromObject(object3d);
+      const finalH = finalBBox.max.y - finalBBox.min.y;
+      const pos = object3d.position;
+      console.log(
+        `  → SPAWNED "${entSpec.id}" OK: pos=(${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}) ` +
+        `height=${finalH.toFixed(2)}m inScene=${!!object3d.parent} visible=${object3d.visible}`,
+      );
+    }
 
     let body: RAPIER.RigidBody | null = null;
     let collider: RAPIER.Collider | null = null;
@@ -550,7 +648,7 @@ export class GameRenderer {
     if (physics) {
       const bodyDesc = this.makeBodyDesc(physics.bodyType, transform.position);
       body = this.world.createRigidBody(bodyDesc);
-      const colDesc = this.makeColliderDesc(physics.collider, meshSpec, scale);
+      const colDesc = this.makeColliderDesc(physics.collider, meshSpec, transform.scale);
       if (colDesc) {
         if (physics.friction !== undefined) colDesc.setFriction(physics.friction);
         if (physics.restitution !== undefined) colDesc.setRestitution(physics.restitution);
@@ -564,11 +662,11 @@ export class GameRenderer {
     // health bar — position above model's actual top
     const hp = entSpec.health ?? 0;
     let healthBar: HealthBar | null = null;
-    if (hp > 0 && entSpec.type === "npc") {
+    if (hp > 0 && isNPC) {
       healthBar = new HealthBar();
       const bbox = new THREE.Box3().setFromObject(object3d);
       const modelTop = bbox.max.y - object3d.position.y;
-      healthBar.group.position.set(0, Math.max(modelTop + 0.3, 1.8), 0);
+      healthBar.group.position.set(0, Math.max(modelTop + 0.3, 2.1), 0);
       object3d.add(healthBar.group);
     }
 
@@ -668,50 +766,90 @@ export class GameRenderer {
   }
 
   // ── Enemy fallback model ──────────────────────────────────────────────
-  /** Build a visible humanoid shape from primitives for NPCs without asset models */
+  /** Build a visible humanoid shape from primitives for NPCs without asset models.
+   *  Always produces a 1.8m tall figure with bright emissive glow. */
   private buildEnemyFallback(entSpec: Entity): THREE.Group {
     const group = new THREE.Group();
-    const name = (entSpec.name || "").toLowerCase();
-
-    // Color-code by enemy type
-    let color = 0xcc3333; // red — grunt
-    if (name.includes("heavy") || name.includes("tank")) color = 0xff8800;
-    else if (name.includes("sniper") || name.includes("ranged") || name.includes("scout")) color = 0x3366cc;
-    else if (name.includes("boss") || name.includes("elite")) color = 0x9933cc;
+    const color = this.getEnemyGlowColor(entSpec.name);
 
     const mat = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.5,
+      roughness: 0.4,
       metalness: 0.3,
       emissive: color,
-      emissiveIntensity: 0.15,
+      emissiveIntensity: 0.35,
+      transparent: false,
+      opacity: 1.0,
     });
 
-    // Body — tapered cylinder (1.4m tall, 0.25m radius top, 0.3m bottom)
-    const bodyGeo = new THREE.CylinderGeometry(0.2, 0.28, 1.3, 8);
-    const body = new THREE.Mesh(bodyGeo, mat);
-    body.position.y = 0.65;
-    body.castShadow = true;
-    group.add(body);
+    // Body — tapered cylinder, base at y=0, top at 1.5m
+    const bodyGeo = new THREE.CylinderGeometry(0.22, 0.3, 1.5, 8);
+    const bodyMesh = new THREE.Mesh(bodyGeo, mat);
+    bodyMesh.position.y = 0.75;
+    bodyMesh.castShadow = true;
+    group.add(bodyMesh);
 
-    // Head — sphere (0.22m radius) on top of body
-    const headGeo = new THREE.SphereGeometry(0.22, 8, 6);
+    // Head — sphere on top of body at 1.8m total
+    const headGeo = new THREE.SphereGeometry(0.24, 8, 6);
     const head = new THREE.Mesh(headGeo, mat);
-    head.position.y = 1.52;
+    head.position.y = 1.65;
     head.castShadow = true;
     group.add(head);
 
-    // Eyes — two small dark spheres for visibility from a distance
+    // Eyes — two small bright white spheres
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const eyeGeo = new THREE.SphereGeometry(0.04, 4, 4);
+    const eyeGeo = new THREE.SphereGeometry(0.05, 4, 4);
     const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.08, 1.55, 0.18);
+    leftEye.position.set(-0.09, 1.68, 0.2);
     group.add(leftEye);
     const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.08, 1.55, 0.18);
+    rightEye.position.set(0.09, 1.68, 0.2);
     group.add(rightEye);
 
+    console.log(`  → built fallback capsule for "${entSpec.id}" (color=0x${color.toString(16)})`);
     return group;
+  }
+
+  /** Determine emissive glow color by enemy name: red=grunt, orange=heavy, blue=sniper, purple=boss */
+  private getEnemyGlowColor(name: string | undefined): number {
+    const n = (name || "").toLowerCase();
+    if (n.includes("boss") || n.includes("elite") || n.includes("commander")) return 0x9933cc;
+    if (n.includes("heavy") || n.includes("tank") || n.includes("brute")) return 0xff8800;
+    if (n.includes("sniper") || n.includes("ranged") || n.includes("scout") || n.includes("marksman")) return 0x3366cc;
+    return 0xcc3333; // grunt / default = red
+  }
+
+  /** Last-resort failsafe: a bright red capsule 1.8m tall, impossible to miss */
+  private buildFailsafeCapsule(entSpec: Entity): { group: THREE.Group; material: THREE.MeshStandardMaterial } {
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xff0000,
+      roughness: 0.3,
+      metalness: 0.0,
+      emissive: 0xff0000,
+      emissiveIntensity: 0.5,
+      transparent: false,
+      opacity: 1.0,
+    });
+
+    // Single bright red capsule
+    const geo = new THREE.CylinderGeometry(0.3, 0.3, 1.8, 8);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.y = 0.9;
+    mesh.castShadow = true;
+    group.add(mesh);
+
+    // Bright top indicator
+    const topGeo = new THREE.SphereGeometry(0.3, 8, 6);
+    const top = new THREE.Mesh(topGeo, mat);
+    top.position.y = 1.8;
+    group.add(top);
+
+    const p = entSpec.transform.position;
+    group.position.set(p.x, 0, p.z);
+
+    console.error(`  → FAILSAFE capsule created for "${entSpec.id}" at (${p.x.toFixed(1)}, 0, ${p.z.toFixed(1)})`);
+    return { group, material: mat };
   }
 
   // ── Geometry / body / collider helpers ────────────────────────────────

@@ -19,17 +19,29 @@ interface GenericIssue {
 export class SpecRefiner {
   private client: Anthropic;
   private model: string;
+  private assetSummary: string = "";
 
   constructor(apiKey: string, options: RefineOptions = {}) {
     this.client = new Anthropic({ apiKey });
     this.model = options.model ?? "claude-sonnet-4-6";
   }
 
+  /** Provide the asset catalog summary so refined specs reference real 3D models */
+  setAssetSummary(summary: string) {
+    this.assetSummary = summary;
+  }
+
+  private getSystemPrompt(basePrompt: string): string {
+    return this.assetSummary
+      ? `${basePrompt}\n\n${this.assetSummary}`
+      : basePrompt;
+  }
+
   async refine(spec: GameSpec, instruction: string): Promise<GameSpec> {
     return this.refineGeneric(
       spec,
       instruction,
-      REFINE_SYSTEM_PROMPT,
+      this.getSystemPrompt(REFINE_SYSTEM_PROMPT),
       GameSpecSchema,
       (s) => validateSpec(s as GameSpec) as GenericIssue[],
       (s, issues) => autoFixSpec(s as GameSpec, issues as any) as unknown as GameSpec,
@@ -40,7 +52,7 @@ export class SpecRefiner {
     return this.refineGeneric(
       spec,
       instruction,
-      SHOOTER_REFINE_PROMPT,
+      this.getSystemPrompt(SHOOTER_REFINE_PROMPT),
       ShooterSpecSchema,
       (s) => validateShooterSpec(s as ShooterSpec) as GenericIssue[],
       (s, issues) => autoFixShooterSpec(s as ShooterSpec, issues as any) as unknown as ShooterSpec,

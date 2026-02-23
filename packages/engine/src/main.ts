@@ -27,6 +27,14 @@ async function main() {
     // Preload any assets referenced in the spec before building the game
     await assetLoader.preloadForSpec(spec);
 
+    // Preload fallback assets for entities missing valid assetIds
+    const themeText = isShooterSpec(spec) ? spec.arena.theme : undefined;
+    const entityList = isShooterSpec(spec)
+      ? [...spec.enemies.map(e => ({ name: e.name, type: "npc" as const, assetId: e.assetId })),
+         ...spec.pickups.map(p => ({ name: p.type, type: "collectible" as const }))]
+      : (spec as GameSpec).entities?.map(e => ({ name: e.name, type: e.type, assetId: e.assetId })) ?? [];
+    await assetLoader.preloadFallbacks(entityList, themeText);
+
     if (isShooterSpec(spec)) {
       const useWorldBuilder = spec.arena.shape === "rectangle";
 
@@ -139,14 +147,19 @@ async function main() {
       currentGame = new GameRenderer(gameSpec);
       currentGame.setPlugin(plugin);
       currentGame.setAssetLoader(assetLoader);
+      const catalog = assetLoader.getCatalog();
+      if (catalog) currentGame.setCatalog(catalog);
+      if (spec.arena.theme) currentGame.setTheme(spec.arena.theme);
       if (useWorldBuilder) {
         currentGame.setArena(spec.arena);
       }
       currentGame.init();
       currentGame.start();
     } else {
-      currentGame = new GameRenderer(spec);
+      currentGame = new GameRenderer(spec as GameSpec);
       currentGame.setAssetLoader(assetLoader);
+      const catalog = assetLoader.getCatalog();
+      if (catalog) currentGame.setCatalog(catalog);
       currentGame.init();
       currentGame.start();
     }
