@@ -196,7 +196,9 @@ THEME-SPECIFIC LIGHTING — match atmosphere to theme:
 - NEVER use skyColor "#000000". Dark blue "#1a1a2e" is the darkest allowed.
 - ambientLightColor must NEVER be very dark — use "#ffffff", "#ddccbb", "#aaccff", etc.
 
-## Few-Shot Examples — study these for variety:
+## Few-Shot Examples — PARTIAL snippets showing only key differentiating fields.
+## Your output MUST be a COMPLETE ShooterSpec with ALL required top-level fields:
+## name, version, template ("shooter"), world, arena, weapons, player (with spawnPoint, startingWeapon), enemies, pickups, rules (with mode, winCondition, loseCondition), ui (with title, description).
 
 EXAMPLE 1 — "a pirate ship battle":
 "arena": { "shape":"rectangle", "size":{"x":35,"y":4,"z":35}, "layoutTemplate":"courtyard", "theme":"pirate dock battle", "coverObjects":[], "zones":[
