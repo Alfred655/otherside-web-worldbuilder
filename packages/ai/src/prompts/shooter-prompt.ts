@@ -158,13 +158,113 @@ All colors must be exactly 7 characters: "#" + 6 lowercase hex digits.`;
 
 export const SHOOTER_GENERATOR_PROMPT = `You are a creative FPS game designer and technical builder. Given a user's game description, design and build a complete ShooterSpec as valid JSON.
 
-Think creatively about:
-- Theme, mood, time of day, hex colors, lighting, fog
-- Arena: shape (rectangle/circle), size, floor/wall materials, cover objects for tactical gameplay
-- Weapons: balanced damage, fire rate, ammo economy. Pistol ~12-15 dmg, shotgun ~30-45, rifle ~10-15 per shot
-- Enemies: varied AI types (patrol, guard, chase, wander, boss), health, speed, accuracy
-- Wave progression: start easy, escalate difficulty. More enemies, tougher enemies in later waves
-- Pickups: health packs near arena edges, ammo in safe spots, weapon pickups to reward exploration
+BEFORE generating JSON, analyze the user's prompt and make these decisions:
+
+1. THEME/MOOD: What is the core theme? (horror, military, fantasy, pirate, sci-fi, western, zombie, alien, medieval, etc.)
+2. ARENA TEMPLATE: Which layout fits best?
+   - "warehouse" for indoor/industrial/factory/lab settings
+   - "courtyard" for open/outdoor/pirate/western/medieval settings
+   - "corridors" for horror/maze/hospital/dungeon/claustrophobic settings
+   - "rooftop" for urban/city/vertical/sci-fi/sniper settings
+   - "bunker" for military/base/fortress/defense settings
+3. ARENA SIZE: Match the prompt's scale and intensity:
+   - Small/tight (24-28m): horror, claustrophobic, close quarters, corridors
+   - Medium (28-34m): standard combat, most themes, indoor arenas
+   - Large/open (34-40m): epic battles, outdoor themes, pirate, western
+4. TIME OF DAY + LIGHTING: Match the mood (see LIGHTING RULES below)
+5. ENEMY TYPES: Pick 2-3 DIFFERENT enemy types that fit the theme with different AI behaviors
+6. WEAPON NAMES: Use theme-specific names, NOT generic "Pistol"/"Shotgun"
+
+THEME-SPECIFIC WEAPON NAMING — weapons must feel like they belong in the world:
+- Horror/Dark: "Rusty Revolver", "Sawed-Off Shotgun", "Crossbow", "Nail Gun"
+- Sci-fi/Alien: "Plasma Pistol", "Ion Rifle", "Pulse Cannon", "Arc Blaster"
+- Pirate/Nautical: "Flintlock", "Blunderbuss", "Hand Cannon", "Musket"
+- Military/Tactical: "M9 Sidearm", "M4 Carbine", "RPG-7", "Combat Shotgun"
+- Fantasy/Medieval: "Arcane Bolt", "Fire Staff", "Ice Shard", "Enchanted Crossbow"
+- Western: "Six-Shooter", "Lever-Action Rifle", "Double-Barrel Shotgun", "Derringer"
+- Zombie: "Makeshift Pistol", "Pipe Shotgun", "Hunting Rifle", "Molotov Launcher"
+- Alien: "Disruptor", "Photon Blaster", "Gravity Gun", "Tesla Coil"
+
+THEME-SPECIFIC LIGHTING — match atmosphere to theme:
+- Horror/Dark/Zombie: timeOfDay "night" or "midnight", skyColor "#1a1a2e", ambientLightColor "#8888aa", ambientLightIntensity 0.3-0.4, fog color "#2a1a3a" or "#1a2a1a"
+- Military/Tactical: timeOfDay "morning" or "noon", skyColor "#87ceeb", ambientLightColor "#ffffff", ambientLightIntensity 0.6, no fog
+- Pirate/Nautical: timeOfDay "afternoon" or "dusk", skyColor "#ff8844" or "#cc6633", ambientLightColor "#ffddaa", ambientLightIntensity 0.5, warm fog "#ffaa66"
+- Sci-fi/Alien: timeOfDay "dusk" or "night", skyColor "#0a0a2a" or "#1a0a2a", ambientLightColor "#aaccff", ambientLightIntensity 0.4, neon fog "#00ff88" or "#8800ff"
+- Fantasy/Medieval: timeOfDay "dawn" or "morning", skyColor "#9988cc" or "#aabb99", ambientLightColor "#ffeecc", ambientLightIntensity 0.5, light fog "#ccbbdd"
+- Western: timeOfDay "afternoon", skyColor "#ddaa55" or "#cc8833", ambientLightColor "#ffddbb", ambientLightIntensity 0.6, dusty fog "#ccaa77"
+- Indoor (warehouse/bunker): ambientLightIntensity 0.5-0.7, warm ambientLightColor "#ffddcc" or "#ddccbb"
+- NEVER use skyColor "#000000". Dark blue "#1a1a2e" is the darkest allowed.
+- ambientLightColor must NEVER be very dark — use "#ffffff", "#ddccbb", "#aaccff", etc.
+
+## Few-Shot Examples — study these for variety:
+
+EXAMPLE 1 — "a pirate ship battle":
+"arena": { "shape":"rectangle", "size":{"x":35,"y":4,"z":35}, "layoutTemplate":"courtyard", "theme":"pirate dock battle", "coverObjects":[], "zones":[
+  {"type":"spawn_area","region":"south","description":"Dock entrance"},
+  {"type":"landmark","region":"center","description":"Ship mast and cargo"},
+  {"type":"cover_heavy","region":"north","description":"Cannon positions"},
+  {"type":"supply_cache","region":"east","description":"Rum barrels and loot"},
+  {"type":"open_combat","region":"west","description":"Open deck"}] },
+"world": { "skyColor":"#ff7744", "ambientLightColor":"#ffddaa", "ambientLightIntensity":0.5, "fog":{"color":"#ffaa66","near":20,"far":60}, "timeOfDay":"dusk", "gravity":{"x":0,"y":-9.81,"z":0} },
+"weapons": [{ "id":"flintlock", "name":"Flintlock", "type":"hitscan", "damage":20, "fireRate":1.5, "reloadTime":2.5, "magSize":6, "maxReserve":36, "spread":0.04, "range":40 }],
+"enemies": [
+  { "id":"skeleton-1", "name":"Skeleton Pirate", "health":35, "assetId":"skeleton", "behavior":{"aiType":"patrol","aggroRange":14,"attackRange":2} },
+  { "id":"ghost-1", "name":"Ship Ghost", "health":25, "assetId":"ghost", "behavior":{"aiType":"wander","aggroRange":18,"attackRange":3} }]
+
+EXAMPLE 2 — "zombie survival in a hospital":
+"arena": { "shape":"rectangle", "size":{"x":26,"y":4,"z":26}, "layoutTemplate":"corridors", "theme":"abandoned hospital", "coverObjects":[], "zones":[
+  {"type":"spawn_area","region":"southwest","description":"Emergency exit"},
+  {"type":"cover_heavy","region":"north","description":"Overturned gurneys"},
+  {"type":"open_combat","region":"center","description":"Main hallway junction"},
+  {"type":"supply_cache","region":"northeast","description":"Medicine storage"},
+  {"type":"cover_light","region":"east","description":"Waiting room chairs"},
+  {"type":"sniper_perch","region":"northwest","description":"Elevated nurse station"}] },
+"world": { "skyColor":"#1a1a2e", "ambientLightColor":"#8888aa", "ambientLightIntensity":0.35, "fog":{"color":"#1a2a1a","near":8,"far":35}, "timeOfDay":"night", "gravity":{"x":0,"y":-9.81,"z":0} },
+"weapons": [{ "id":"pipe-shotgun", "name":"Pipe Shotgun", "type":"hitscan", "damage":40, "fireRate":1.0, "reloadTime":2.0, "magSize":4, "maxReserve":24, "spread":0.12, "range":25 }],
+"enemies": [
+  { "id":"zombie-1", "name":"Infected Patient", "health":30, "assetId":"zombie", "behavior":{"aiType":"chase","aggroRange":12,"attackRange":2} },
+  { "id":"zombie-2", "name":"Zombie Nurse", "health":45, "assetId":"zombie_animated_a", "behavior":{"aiType":"patrol","aggroRange":15,"attackRange":2} }]
+
+EXAMPLE 3 — "alien invasion on a rooftop":
+"arena": { "shape":"rectangle", "size":{"x":32,"y":4,"z":26}, "layoutTemplate":"rooftop", "theme":"neon city rooftop", "coverObjects":[], "zones":[
+  {"type":"spawn_area","region":"south","description":"Rooftop access stairs"},
+  {"type":"cover_heavy","region":"west","description":"HVAC units and generators"},
+  {"type":"open_combat","region":"center","description":"Open helipad"},
+  {"type":"sniper_perch","region":"north","description":"Water tower vantage"},
+  {"type":"supply_cache","region":"east","description":"Emergency supply crate"}] },
+"world": { "skyColor":"#0a0a2a", "ambientLightColor":"#aaccff", "ambientLightIntensity":0.4, "fog":{"color":"#00ff88","near":15,"far":50}, "timeOfDay":"night", "gravity":{"x":0,"y":-9.81,"z":0} },
+"weapons": [{ "id":"plasma-pistol", "name":"Plasma Pistol", "type":"hitscan", "damage":14, "fireRate":4, "reloadTime":1.2, "magSize":16, "maxReserve":80, "spread":0.03, "range":50 }],
+"enemies": [
+  { "id":"alien-1", "name":"Drone Scout", "health":25, "assetId":"kenney_enemy_flying", "behavior":{"aiType":"wander","aggroRange":20,"attackRange":4} },
+  { "id":"cyborg-1", "name":"Cyborg Enforcer", "health":60, "assetId":"cyborg_female", "behavior":{"aiType":"guard","aggroRange":16,"attackRange":3} }]
+
+EXAMPLE 4 — "medieval castle defense":
+"arena": { "shape":"rectangle", "size":{"x":30,"y":4,"z":26}, "layoutTemplate":"bunker", "theme":"stone castle courtyard", "coverObjects":[], "zones":[
+  {"type":"spawn_area","region":"south","description":"Castle gate entrance"},
+  {"type":"cover_heavy","region":"east","description":"Stone rampart positions"},
+  {"type":"landmark","region":"center","description":"Castle fountain and statue"},
+  {"type":"open_combat","region":"north","description":"Courtyard killing ground"},
+  {"type":"supply_cache","region":"west","description":"Armory alcove"},
+  {"type":"sniper_perch","region":"northeast","description":"Tower overlook"}] },
+"world": { "skyColor":"#9988cc", "ambientLightColor":"#ffeecc", "ambientLightIntensity":0.5, "fog":{"color":"#ccbbdd","near":20,"far":55}, "timeOfDay":"dawn", "gravity":{"x":0,"y":-9.81,"z":0} },
+"weapons": [{ "id":"crossbow", "name":"Enchanted Crossbow", "type":"hitscan", "damage":22, "fireRate":2, "reloadTime":1.8, "magSize":8, "maxReserve":40, "spread":0.02, "range":55 }],
+"enemies": [
+  { "id":"skel-1", "name":"Skeleton Knight", "health":50, "assetId":"skeleton", "behavior":{"aiType":"guard","aggroRange":14,"attackRange":2} },
+  { "id":"vamp-1", "name":"Vampire Lord", "health":80, "assetId":"vampire", "behavior":{"aiType":"boss","aggroRange":20,"attackRange":3} }]
+
+EXAMPLE 5 — "wild west shootout":
+"arena": { "shape":"rectangle", "size":{"x":36,"y":4,"z":32}, "layoutTemplate":"courtyard", "theme":"dusty frontier town", "coverObjects":[], "zones":[
+  {"type":"spawn_area","region":"south","description":"Saloon entrance"},
+  {"type":"cover_heavy","region":"west","description":"Overturned wagon"},
+  {"type":"open_combat","region":"center","description":"Main street standoff"},
+  {"type":"cover_light","region":"east","description":"Market stall debris"},
+  {"type":"supply_cache","region":"north","description":"Sheriff's office"},
+  {"type":"sniper_perch","region":"northwest","description":"Clock tower"}] },
+"world": { "skyColor":"#ddaa55", "ambientLightColor":"#ffddbb", "ambientLightIntensity":0.6, "fog":{"color":"#ccaa77","near":25,"far":65}, "timeOfDay":"afternoon", "gravity":{"x":0,"y":-9.81,"z":0} },
+"weapons": [{ "id":"six-shooter", "name":"Six-Shooter", "type":"hitscan", "damage":18, "fireRate":2.5, "reloadTime":2.0, "magSize":6, "maxReserve":42, "spread":0.03, "range":45 }],
+"enemies": [
+  { "id":"bandit-1", "name":"Outlaw", "health":40, "assetId":"kenney_soldier", "behavior":{"aiType":"patrol","aggroRange":16,"attackRange":2} },
+  { "id":"bandit-2", "name":"Sharpshooter", "health":30, "assetId":"criminal_male", "behavior":{"aiType":"guard","aggroRange":22,"attackRange":5} }]
 
 CRITICAL RULES:
 - Every enemy.weapon MUST reference a valid weapons[].id (or omit it for melee)
@@ -173,7 +273,7 @@ CRITICAL RULES:
 - All entity positions must be within arena bounds (±size.x/2 for X, ±size.z/2 for Z)
 - Enemies must be at least 10 units (XZ distance) from player spawn
 - ALL enemies MUST have position.y = 0 and scale = {x:1, y:1, z:1}
-- ALL enemies MUST have "assetId": "kenney_soldier" (ground enemies) or "assetId": "kenney_enemy_flying" (flying/drone enemies). NEVER omit assetId on enemies.
+- ALL enemies MUST have an assetId from the catalog. Use character/enemy assets matching the theme (e.g. "kenney_soldier", "skeleton", "zombie", "ghost", "vampire", "kenney_enemy_flying"). NEVER omit assetId on enemies.
 - ALL enemies MUST have mesh size {x:0.6, y:1.5, z:0.6} and collider "capsule" — this ensures the physics collider matches the 3D model.
 - Spread values: 0-0.03 = accurate, 0.04-0.08 = moderate, 0.1-0.2 = wide
 - Fire rates: pistol 2-4, rifle 6-10, shotgun 0.8-1.5
@@ -185,8 +285,18 @@ CONSTRAINTS:
 - Maximum 8 pickups
 - All colors: lowercase hex "#rrggbb"
 
-ASSET SYSTEM:
-- For ENEMIES: always use "assetId": "kenney_soldier" for humanoid/soldier enemies, "assetId": "kenney_enemy_flying" for flying/drone/alien enemies. This is critical for enemy visibility.
+ASSET SYSTEM — THEME-AWARE SELECTION:
+- An asset catalog of 3D models is provided below. ALWAYS set "assetId" on enemies and cover objects.
+- Match assets to the game's theme:
+  MILITARY/COMBAT: enemies→"kenney_soldier","character_soldier","criminal_male". Cover→"urban_barrier_strong_type_a","urban_barrier_strong_type_b","urban_block","dumpster_closed".
+  HORROR/SPOOKY/DARK: enemies→"zombie","skeleton","ghost","vampire","zombie_animated_a". Cover→"coffin","coffin_old","hay_bale","hay_bale_bundled".
+  WAREHOUSE/INDUSTRIAL: enemies→"kenney_soldier","criminal_male","survivor_male". Cover→"crate_medium","crate_small","crate_wide","pallet","pallet_small","pirate_barrel".
+  SCI-FI/FUTURISTIC: enemies→"kenney_enemy_flying","cyborg_female","criminal_male". Cover→"urban_barrier_strong_type_a","urban_block","urban_barrier_type_a".
+  PIRATE/NAUTICAL: enemies→"skeleton","ghost","graveyard_keeper". Cover→"pirate_barrel","pirate_crate","pirate_crate_bottles","crate_medium".
+  FANTASY/MEDIEVAL: enemies→"skeleton","vampire","ghost","graveyard_keeper". Cover→"crate_medium","crate_wide","pirate_barrel","hay_bale".
+- Priority: theme-preferred assets > literal description match > any category match.
+- VARIETY: use 3-5 DIFFERENT cover asset types per arena. Never reuse the same assetId more than 4 times.
+- NEVER omit assetId on enemies or cover objects. Every enemy and every cover object MUST have a valid assetId.
 - When assetId is set, always use scale {"x":1,"y":1,"z":1} and position.y = 0.
 
 ARENA CONSTRUCTION — the engine automatically builds the arena floor and walls using modular 3D tiles:
@@ -223,20 +333,9 @@ ZONE DESIGN PRINCIPLES:
 - Place supply_cache zones away from spawn (exploration reward)
 - Use sniper_perch for guard enemies with long sight lines
 
-LIGHTING RULES — the arena must always be well-lit and visible:
-- ambientLightIntensity MUST be at least 0.5 for indoor/warehouse themes, at least 0.3 for outdoor.
-- ambientLightColor should be a warm or neutral tone, NEVER very dark (use "#ffffff" or "#ddccbb", NOT "#111111").
-- For indoor themes (warehouse, bunker, factory): ambientLightIntensity 0.5-0.7, warm ambientLightColor.
-- For outdoor themes (desert, forest, ruins): ambientLightIntensity 0.4-0.6, timeOfDay "morning" or "afternoon" for good light.
-- For dusk/night themes: ambientLightIntensity 0.3-0.4 but use warm fog color to add atmosphere.
-- skyColor should NEVER be "#000000". Use dark blue "#1a1a2e" for night, warm tones for day.
-
 Output ONLY valid JSON — no markdown, no code fences, no commentary.
 
-${SHOOTER_SCHEMA_DOCS}
-
-## Example weapon:
-{ "id": "pistol", "name": "Pistol", "type": "hitscan", "damage": 15, "fireRate": 3, "reloadTime": 1.5, "magSize": 12, "maxReserve": 60, "spread": 0.02, "range": 50 }
+\${SHOOTER_SCHEMA_DOCS}
 
 ## Example enemy (with layout — placeholder position):
 { "id": "grunt-1", "name": "Grunt", "health": 40, "moveSpeed": 3, "accuracy": 0.5,
@@ -247,25 +346,6 @@ ${SHOOTER_SCHEMA_DOCS}
   "behavior": { "aiType": "patrol", "aggroRange": 15, "attackRange": 2 },
   "assetId": "kenney_soldier",
   "spawnWave": 1 }
-
-## Example arena with layout:
-"arena": {
-  "shape": "rectangle",
-  "size": { "x": 30, "y": 4, "z": 24 },
-  "wallHeight": 4,
-  "floorMaterial": { "color": "#555544", "roughness": 0.9, "metalness": 0 },
-  "wallMaterial": { "color": "#666655", "roughness": 0.8, "metalness": 0 },
-  "coverObjects": [],
-  "layoutTemplate": "warehouse",
-  "theme": "dark warehouse",
-  "zones": [
-    { "type": "spawn_area", "region": "southwest", "description": "Player entry point" },
-    { "type": "cover_heavy", "region": "northwest", "description": "Office area with heavy cover" },
-    { "type": "open_combat", "region": "center", "description": "Main combat area between lanes" },
-    { "type": "supply_cache", "region": "northeast", "description": "Loading dock with supplies" },
-    { "type": "cover_light", "region": "east", "description": "Side corridor with light cover" }
-  ]
-}
 
 ## Example pickup (placeholder position):
 { "type": "ammo", "id": "ammo-1", "position": { "x": 0, "y": 0, "z": 0 }, "amount": 24, "weaponId": "pistol" }
@@ -280,6 +360,24 @@ Fix each issue while keeping the rest of the spec intact. Make minimal changes n
 
 export const SHOOTER_REFINE_PROMPT = `You are an FPS game designer AI. Modify an existing ShooterSpec according to the user's instruction. Return the COMPLETE updated spec as **pure JSON** (no markdown, no code fences, no commentary).
 
+REFINEMENT PHILOSOPHY: Your job is to make DRAMATIC, VISIBLE changes. The user should immediately notice what changed when the game reloads. Small tweaks are failures. Every refinement must produce a noticeably different game.
+
+STRUCTURAL ADDITION GUIDE — what "add X" means in practice:
+- "add a house/building" → add 4-6 new zones with cover_heavy/landmark types forming a structure area, add a "landmark" zone, describe it in zone descriptions
+- "add more enemies" → add 3-4 NEW enemy entries with DIFFERENT types and behaviors from existing ones, increase total enemy count by at least 50%
+- "make it harder" → increase enemy count by 50%, boost enemy health by 30%, reduce pickup count, add a boss enemy if none exists, increase enemy accuracy
+- "make it nighttime" → change ALL of: timeOfDay to "night", skyColor to "#1a1a2e", ambientLightColor to "#8888aa", ambientLightIntensity to 0.3-0.4, ADD fog with dark color "#2a1a3a"
+- "make it daytime" → change ALL of: timeOfDay to "morning" or "afternoon", skyColor to "#87ceeb", ambientLightColor to "#ffffff", ambientLightIntensity to 0.6, REMOVE fog or lighten it
+- "add a sniper tower" → add "sniper_perch" zone in a corner region, add 1-2 guard-type enemies with high accuracy (0.7+) and long aggroRange (20+)
+- "add more weapons" → add 2 weapons with distinct stats (one fast/weak, one slow/powerful), add ammo pickups for them
+
+REFINEMENT MAGNITUDE RULES:
+- Atmosphere changes: modify ALL of skyColor, ambientLightColor, ambientLightIntensity, fog, and timeOfDay together. Not just one field.
+- Enemy additions: add at least 2-3 new enemies with DIFFERENT types/behaviors from existing ones. Never just clone an existing enemy.
+- Zone changes: add at least 2 new zones when user requests structural changes.
+- Weapon changes: if adding weapons, add 2 with distinct stats (one fast/weak, one slow/powerful).
+- Difficulty changes: adjust at least 3 fields (enemy count, health, accuracy, pickup count, damage).
+
 ${SHOOTER_SCHEMA_DOCS}
 
 Rules:
@@ -288,10 +386,10 @@ Rules:
 - Every enemy.weapon must reference a valid weapons[].id.
 - player.startingWeapon must match a weapons[].id.
 - waveConfig.waves[].enemyIds must reference existing enemies[].id values.
-- For difficulty changes: adjust enemy health/speed/count, weapon damage, or ammo amounts.
 - Always return the FULL spec, not just changed parts.
 - All colors: exactly "#" + 6 lowercase hex digits. "template" must be "shooter".
-- For ENEMIES: always use "assetId": "kenney_soldier" for humanoid enemies, "assetId": "kenney_enemy_flying" for flying enemies.
+- For ENEMIES: always assign an assetId from the catalog matching the theme. Military→"kenney_soldier","character_soldier". Horror→"zombie","skeleton","ghost","vampire". Sci-fi→"kenney_enemy_flying","cyborg_female". Pirate/Fantasy→"skeleton","ghost","graveyard_keeper". NEVER omit assetId on enemies.
+- For COVER: always assign an assetId. Use theme-appropriate assets with variety (3-5 different types).
 
 LAYOUT SYSTEM:
 - If the spec has a "layoutTemplate", PRESERVE it. Do NOT remove it or add coverObjects.

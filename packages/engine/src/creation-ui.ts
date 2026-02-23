@@ -857,6 +857,7 @@ export class CreationUI {
       const decoder = new TextDecoder();
       let buffer = "";
       let spec: AnySpec | null = null;
+      let summary: string | null = null;
 
       let sseError: string | null = null;
 
@@ -872,6 +873,7 @@ export class CreationUI {
               this.updateLoadingText(event.message);
             } else if (event.type === "complete") {
               spec = event.spec as AnySpec;
+              if (event.summary) summary = event.summary as string;
             } else if (event.type === "error") {
               sseError = event.message;
             }
@@ -913,12 +915,14 @@ export class CreationUI {
       this.showChatBar();
 
       this.addChatMessage({ role: "user", text: trimmed });
-      const entityCount = "entities" in receivedSpec
-        ? `${(receivedSpec as GameSpec).entities.length} entities`
-        : `${(receivedSpec as ShooterSpec).enemies.length} enemies, ${(receivedSpec as ShooterSpec).weapons.length} weapons`;
+      const genSummary = summary
+        ? summary
+        : ("entities" in receivedSpec
+          ? `Built "${receivedSpec.name}" — ${(receivedSpec as GameSpec).entities.length} entities`
+          : `Built "${receivedSpec.name}" — ${(receivedSpec as ShooterSpec).enemies.length} enemies, ${(receivedSpec as ShooterSpec).weapons.length} weapons`);
       this.addChatMessage({
         role: "system",
-        text: `Generated "${receivedSpec.name}" — ${entityCount}`,
+        text: genSummary,
       });
 
       await this.onSpec(receivedSpec);
@@ -973,18 +977,21 @@ export class CreationUI {
         throw new Error(msg);
       }
 
-      const { spec } = (await res.json()) as { spec: AnySpec };
+      const refineResult = (await res.json()) as { spec: AnySpec; summary?: string };
+      const spec = refineResult.spec;
       this.currentSpec = spec;
 
       this.hideLoading();
       this.chatInput.disabled = false;
       this.chatSendBtn.disabled = false;
-      const refineCount = "entities" in spec
-        ? `${(spec as GameSpec).entities.length} entities`
-        : `${(spec as ShooterSpec).enemies.length} enemies, ${(spec as ShooterSpec).weapons.length} weapons`;
+      const refineSummary = refineResult.summary
+        ? refineResult.summary
+        : ("entities" in spec
+          ? `Updated "${spec.name}" — ${(spec as GameSpec).entities.length} entities`
+          : `Updated "${spec.name}" — ${(spec as ShooterSpec).enemies.length} enemies, ${(spec as ShooterSpec).weapons.length} weapons`);
       this.addChatMessage({
         role: "system",
-        text: `Updated "${spec.name}" — ${refineCount}`,
+        text: refineSummary,
       });
 
       await this.onSpec(spec);

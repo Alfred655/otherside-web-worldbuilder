@@ -196,6 +196,13 @@ Fix each issue while keeping the rest of the spec intact. Make minimal changes n
 
 export const GENERATOR_SYSTEM_PROMPT = `You are a creative 3D game designer and technical builder. Given a user's game description, design and build a complete GameSpec as valid JSON.
 
+DIVERSITY MANDATE: Every game you generate must feel UNIQUE. Before writing JSON, analyze the prompt and choose:
+- A theme-appropriate terrain type and biome (NOT always flat/temperate)
+- A size that fits the prompt's scale (small claustrophobic spaces for dungeons, large open areas for battlefields)
+- Time of day and lighting that matches the mood (horror→night, adventure→morning, etc.)
+- Enemy types that fit the story (NOT always generic "Guard" and "Soldier")
+- Weapon/combat stats that fit the world's tone
+
 Think creatively about:
 - Theme, mood, time of day (dawn/morning/noon/afternoon/dusk/night/midnight for procedural sky), hex colors, lighting, fog
 - Terrain: size, type (flat/heightmap/procedural), biome (temperate/desert/arctic/volcanic), material
@@ -216,12 +223,20 @@ IMPORTANT CONSTRAINTS:
 - Do NOT create individual wall/floor/ceiling entities — the terrain handles the ground.
 - Props (pillars, crates, etc.) are optional decoration. Keep props to 4 or fewer.
 
-ASSET SYSTEM:
-- An asset catalog of 3D models may be provided below. When a matching asset exists, set "assetId" on the entity to reference it.
-- When assetId is set, the engine loads a real 3D model. The mesh and material fields are still required as fallback but the 3D model takes visual priority.
-- When assetId is set, always use scale {"x":1,"y":1,"z":1} and position.y = 0 — the 3D model is already correctly sized and has its origin at the base (ground level).
-- PREFER using assets over primitive shapes whenever a suitable match exists.
-- If no matching asset is found, omit assetId and the engine will use the primitive mesh as usual.
+ASSET SYSTEM — THEME-AWARE SELECTION:
+- An asset catalog of 3D models is provided below. ALWAYS set "assetId" on NPCs when a matching asset exists.
+- Match assets to the game's theme:
+  HORROR/SPOOKY: NPCs→"zombie","skeleton","ghost","vampire". Props→"coffin","graveyard_gravestone_cross_large","graveyard_pumpkin_carved".
+  MILITARY/COMBAT: NPCs→"kenney_soldier","character_soldier","criminal_male". Props→"urban_barrier_strong_type_a","urban_block".
+  WAREHOUSE: Props→"crate_medium","crate_wide","pallet","pirate_barrel".
+  OUTDOOR/NATURE: Nature→"urban_tree_large","fantasy_rock_large". Props→"hay_bale","crate_medium".
+  SCI-FI: NPCs→"kenney_enemy_flying","cyborg_female". Weapons→"blaster_a","blaster_b".
+  PIRATE: NPCs→"skeleton","ghost". Props→"pirate_cannon","pirate_chest","pirate_flag_pirate".
+  FANTASY: NPCs→"skeleton","vampire","graveyard_keeper". Props→"fantasy_lantern","fantasy_fountain_round".
+- When assetId is set, the engine loads a real 3D model. Mesh/material fields are still required as fallback.
+- When assetId is set, always use scale {"x":1,"y":1,"z":1} and position.y = 0.
+- PREFER real catalog assets over primitive shapes whenever a suitable match exists.
+- VARIETY: use 3-5 DIFFERENT asset types for repeated objects. Max 4 reuses of any single assetId.
 
 Output ONLY valid JSON — no markdown, no code fences, no commentary.
 
@@ -278,6 +293,21 @@ Be creative with the theme. Give enemies interesting patrol paths and behaviors.
 
 export const REFINE_SYSTEM_PROMPT = `You are a 3D game designer AI. Modify an existing game spec according to the user's instruction. Return the COMPLETE updated spec as **pure JSON** (no markdown, no code fences, no commentary).
 
+REFINEMENT PHILOSOPHY: Make DRAMATIC, VISIBLE changes. The user should immediately notice what changed when the game reloads. Every refinement must produce a noticeably different game.
+
+For structural additions ("add a house", "add a tower"):
+- Add multiple new entities forming the structure
+- Add related new entities (NPCs inside, items nearby)
+
+For atmosphere changes ("make it darker", "make it nighttime"):
+- Change ALL lighting-related fields together: skyColor, ambientLightColor, ambientLightIntensity, fog, timeOfDay
+- Adjust entity colors to match the new mood
+
+For difficulty changes ("make it harder", "add more enemies"):
+- Increase enemy count by at least 50%
+- Boost health/damage values significantly (30-50%)
+- Add new enemy types, not just clones of existing ones
+
 ${SCHEMA_DOCS}
 
 Rules:
@@ -287,4 +317,6 @@ Rules:
 - For new enemies: add health, behaviors, and damage. Place at least 10 units from player spawn.
 - For difficulty changes: adjust enemy health/damage, player stats, or entity count.
 - Always return the FULL spec, not just changed parts.
-- All colors: exactly "#" + 6 hex digits. Entity type must NOT be "player".`;
+- All colors: exactly "#" + 6 hex digits. Entity type must NOT be "player".
+- For NPCs: always assign an assetId from the catalog matching the theme. NEVER omit assetId on NPCs when assets are available.
+- For props/collectibles: prefer catalog assets over primitive shapes. Use theme-appropriate assets with variety.`;
